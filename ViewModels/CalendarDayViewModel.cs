@@ -1,0 +1,144 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using Avalonia.Media;
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace HmDesktopCalendar.ViewModels;
+
+public sealed class CalendarTaskPreviewViewModel
+{
+    public CalendarTaskPreviewViewModel(string timeText, string title,
+        bool isCompleted)
+    {
+        TimeText = timeText;
+        Title = title;
+        IsCompleted = isCompleted;
+    }
+
+    public string TimeText { get; }
+    public string Title { get; }
+    public bool IsCompleted { get; }
+    public double Opacity => IsCompleted ? 0.5 : 1.0;
+    public TextDecorationCollection? TitleDecorations =>
+        IsCompleted ? TextDecorations.Strikethrough : null;
+}
+
+public sealed class CalendarDayViewModel : ObservableObject
+{
+    private DateOnly _date;
+    private bool _isCurrentMonth;
+    private int _incompleteCount;
+    private int _completedCount;
+    private IReadOnlyList<CalendarTaskPreviewViewModel> _allTasks =
+        Array.Empty<CalendarTaskPreviewViewModel>();
+    private int _capacity;
+    private int _hiddenCount;
+
+    public CalendarDayViewModel(DateOnly date, bool isCurrentMonth,
+        int incompleteCount, int completedCount,
+        IReadOnlyList<CalendarTaskPreviewViewModel> allTasks, int capacity)
+    {
+        _capacity = capacity;
+        Update(date, isCurrentMonth, incompleteCount, completedCount, allTasks);
+    }
+
+    public ObservableCollection<CalendarTaskPreviewViewModel> VisibleTasks
+        { get; } = [];
+    public IReadOnlyList<CalendarTaskPreviewViewModel> AllTasks => _allTasks;
+
+    public DateOnly Date
+    {
+        get => _date;
+        private set
+        {
+            if (SetProperty(ref _date, value))
+                OnPropertyChanged(nameof(DayText));
+        }
+    }
+
+    public bool IsCurrentMonth
+    {
+        get => _isCurrentMonth;
+        private set
+        {
+            if (SetProperty(ref _isCurrentMonth, value))
+                OnPropertyChanged(nameof(CellOpacity));
+        }
+    }
+
+    public int IncompleteCount
+    {
+        get => _incompleteCount;
+        private set
+        {
+            if (!SetProperty(ref _incompleteCount, value)) return;
+            OnPropertyChanged(nameof(IncompleteText));
+            OnPropertyChanged(nameof(HasIncomplete));
+        }
+    }
+
+    public int CompletedCount
+    {
+        get => _completedCount;
+        private set
+        {
+            if (!SetProperty(ref _completedCount, value)) return;
+            OnPropertyChanged(nameof(CompletedText));
+            OnPropertyChanged(nameof(HasCompleted));
+        }
+    }
+
+    public int HiddenCount
+    {
+        get => _hiddenCount;
+        private set
+        {
+            if (!SetProperty(ref _hiddenCount, value)) return;
+            OnPropertyChanged(nameof(HasHiddenTasks));
+            OnPropertyChanged(nameof(HiddenText));
+        }
+    }
+
+    public string DayText => Date.Day.ToString();
+    public string IncompleteText => $"미완료 {IncompleteCount}";
+    public string CompletedText => $"완료 {CompletedCount}";
+    public bool HasIncomplete => IncompleteCount > 0;
+    public bool HasCompleted => CompletedCount > 0;
+    public bool HasHiddenTasks => HiddenCount > 0;
+    public string HiddenText => $"+{HiddenCount}개 더 있음";
+    public double CellOpacity => IsCurrentMonth ? 1.0 : 0.45;
+
+    public void SetCapacity(int capacity)
+    {
+        capacity = Math.Max(0, capacity);
+        if (_capacity == capacity) return;
+        _capacity = capacity;
+        ApplyVisibility();
+    }
+
+    public void Update(DateOnly date, bool isCurrentMonth,
+        int incompleteCount, int completedCount,
+        IReadOnlyList<CalendarTaskPreviewViewModel> allTasks)
+    {
+        Date = date;
+        IsCurrentMonth = isCurrentMonth;
+        IncompleteCount = incompleteCount;
+        CompletedCount = completedCount;
+        _allTasks = allTasks;
+        ApplyVisibility();
+    }
+
+    private void ApplyVisibility()
+    {
+        int visibleCount = _allTasks.Count <= _capacity
+            ? _allTasks.Count
+            : Math.Max(0, _capacity - 1);
+        VisibleTasks.Clear();
+        foreach (CalendarTaskPreviewViewModel task in
+                 _allTasks.Take(visibleCount))
+            VisibleTasks.Add(task);
+        HiddenCount = _allTasks.Count - visibleCount;
+    }
+}

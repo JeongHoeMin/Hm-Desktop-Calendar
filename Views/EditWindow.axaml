@@ -1,0 +1,42 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ x:Class="HmDesktopCalendar.Views.EditWindow" x:CompileBindings="False" Width="700" Height="620"
+ MinWidth="580" MinHeight="500" Title="할 일 편집" WindowStartupLocation="CenterScreen" Topmost="True">
+ <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+  <TextBlock Text="{Binding DateTitle}" FontSize="24" FontWeight="SemiBold"/>
+  <TextBox x:Name="NewTitle" Grid.Row="1" Margin="0,16,0,8"
+           PlaceholderText="새 할 일 제목" HorizontalAlignment="Stretch"/>
+  <Grid Grid.Row="2" ColumnDefinitions="Auto,260,*,Auto">
+   <TextBlock Text="시간" VerticalAlignment="Center" Margin="0,0,10,0"/>
+   <TimePicker x:Name="NewTime" Grid.Column="1" ClockIdentifier="24HourClock"
+               MinuteIncrement="1" HorizontalAlignment="Stretch"/>
+   <Button Grid.Column="3" Content="할 일 추가" Click="Add_OnClick"
+           MinWidth="92" Margin="12,0,0,0"/>
+  </Grid>
+  <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,8,0,14">
+    <Button Content="시간 없음" Tag="none" Click="PresetTime_OnClick"/><Button Content="지금" Tag="now" Click="PresetTime_OnClick"/>
+    <Button Content="오전 9시" Tag="09:00" Click="PresetTime_OnClick"/><Button Content="정오" Tag="12:00" Click="PresetTime_OnClick"/>
+    <Button Content="오후 6시" Tag="18:00" Click="PresetTime_OnClick"/>
+  </StackPanel>
+  <ListBox Grid.Row="4" ItemsSource="{Binding Items}">
+   <ListBox.ItemTemplate><DataTemplate>
+   <Border Padding="12" Margin="0,3" Background="#10000000" CornerRadius="8">
+    <Grid ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
+     <CheckBox IsChecked="{Binding IsCompleted}" Click="Complete_OnClick"
+               VerticalAlignment="Center" Margin="0,0,10,0"/>
+     <TextBox Grid.Column="1" Text="{Binding Title}" HorizontalAlignment="Stretch"/>
+     <Button Grid.Column="2" Content="저장" Click="Save_OnClick" MinWidth="64" Margin="10,0,6,0"/>
+     <Button Grid.Column="3" Content="삭제" Click="Delete_OnClick" MinWidth="64"/>
+     <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                 Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+      <TextBlock Text="시간" VerticalAlignment="Center"/>
+      <TimePicker SelectedTime="{Binding TimeValue}" ClockIdentifier="24HourClock"
+                  MinuteIncrement="1" Width="260"/>
+     </StackPanel>
+     <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding Notes}"
+              PlaceholderText="메모" AcceptsReturn="True" MinHeight="54" Margin="0,8,0,0"/>
+    </Grid>
+   </Border>
+  </DataTemplate></ListBox.ItemTemplate></ListBox>
+  <TextBlock Grid.Row="5" Text="{Binding ErrorMessage}" Foreground="#C03030" Margin="0,10,0,0"/>
+ </Grid>
+</Window>
