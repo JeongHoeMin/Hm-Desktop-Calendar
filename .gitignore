@@ -1,0 +1,29 @@
+# .NET build and test outputs
+**/bin/
+**/obj/
+.build-check*/
+TestResults/
+coverage/
+
+# IDE and user-local files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Server dependencies, outputs, and secrets
+server/node_modules/
+server/dist/
+server/.env
+server/.env.*
+!server/.env.example
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# OS metadata
+.DS_Store
+Thumbs.db
