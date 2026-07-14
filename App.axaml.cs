@@ -79,10 +79,14 @@ public partial class App : Application
                 (x, y) => window.HitTestPoint(_windowHost.ToClientPoint(x, y)));
             _interaction.PreviousMonthRequested += OnPreviousMonth;
             _interaction.NextMonthRequested += OnNextMonth;
+            _interaction.YearPickerRequested += OnYearPickerRequested;
+            _interaction.MonthPickerRequested += OnMonthPickerRequested;
+            _interaction.FlyoutDismissRequested += OnFlyoutDismissRequested;
             _interaction.DateEditRequested += OnDateEdit;
             _interaction.MenuRequested += OnMenuRequested;
             _realtime.SyncRequested += OnRealtimeSync;
             _repository.Changed += OnRepositoryChanged;
+            _repository.SynchronizationStateChanged += OnSynchronizationStateChanged;
             _session.Changed += OnSessionChanged;
             window.Opened += OnMainWindowOpened;
             _windowHost.Start();
@@ -102,6 +106,7 @@ public partial class App : Application
         try
         {
             await _session.TryRestoreAsync(_lifetime.Token);
+            _calendar.SetSynchronizationAvailability(_session.IsLoggedIn);
             await _repository.SwitchScopeAsync(_session.User?.Id, _lifetime.Token);
             if (_session.IsLoggedIn)
                 await _repository.SynchronizeAsync(_lifetime.Token);
@@ -129,6 +134,15 @@ public partial class App : Application
         if (_calendar is not null)
             RunBackground(_calendar.NextMonthAsync);
     }
+
+    private void OnYearPickerRequested(object? sender, EventArgs eventArgs) =>
+        _mainWindow?.ShowYearPicker();
+
+    private void OnMonthPickerRequested(object? sender, EventArgs eventArgs) =>
+        _mainWindow?.ShowMonthPicker();
+
+    private void OnFlyoutDismissRequested(object? sender, EventArgs eventArgs) =>
+        _mainWindow?.DismissFlyouts();
 
     private void OnDateEdit(object? sender, DateOnly date)
     {
@@ -230,9 +244,20 @@ public partial class App : Application
         RunBackground(_calendar.RefreshAsync);
     }
 
+    private void OnSynchronizationStateChanged(object? sender,
+        TodoSynchronizationState state) => Dispatcher.UIThread.Post(() =>
+        {
+            if (_calendar is null) return;
+            if (_session.IsLoggedIn)
+                _calendar.ApplySynchronizationState(state);
+            else
+                _calendar.SetSynchronizationAvailability(false);
+        });
+
     private void OnSessionChanged(object? sender, EventArgs eventArgs)
     {
         if (_initializing) return;
+        _calendar?.SetSynchronizationAvailability(_session.IsLoggedIn);
         RunBackground(ApplySessionChangeAsync);
     }
 
@@ -296,6 +321,7 @@ public partial class App : Application
 
         _realtime.SyncRequested -= OnRealtimeSync;
         _repository.Changed -= OnRepositoryChanged;
+        _repository.SynchronizationStateChanged -= OnSynchronizationStateChanged;
         _session.Changed -= OnSessionChanged;
         if (_mainWindow is not null)
             _mainWindow.Opened -= OnMainWindowOpened;
@@ -303,6 +329,9 @@ public partial class App : Application
         {
             _interaction.PreviousMonthRequested -= OnPreviousMonth;
             _interaction.NextMonthRequested -= OnNextMonth;
+            _interaction.YearPickerRequested -= OnYearPickerRequested;
+            _interaction.MonthPickerRequested -= OnMonthPickerRequested;
+            _interaction.FlyoutDismissRequested -= OnFlyoutDismissRequested;
             _interaction.DateEditRequested -= OnDateEdit;
             _interaction.MenuRequested -= OnMenuRequested;
         }

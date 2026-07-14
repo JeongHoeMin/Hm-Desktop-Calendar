@@ -22,6 +22,7 @@ public sealed class SyncingTodoRepository : ITodoRepository, IDisposable, IAsync
     private bool _disposed;
 
     public event EventHandler? Changed;
+    public event EventHandler<TodoSynchronizationState>? SynchronizationStateChanged;
 
     public SyncingTodoRepository(LocalTodoRepository local,
         RemoteTodoRepository remote, AuthSession session)
@@ -167,12 +168,13 @@ public sealed class SyncingTodoRepository : ITodoRepository, IDisposable, IAsync
         await _syncGate.WaitAsync(cancellationToken);
         try
         {
+            PublishSynchronizationState(TodoSynchronizationStatus.InProgress);
             List<TodoItem> snapshot;
             await _localGate.WaitAsync(cancellationToken);
             try { snapshot = await _local.GetAllAsync(cancellationToken); }
             finally { _localGate.Release(); }
 
-            bool uploadsSucceeded = true;
+            Exception? uploadFailure = null;
             foreach (TodoItem item in snapshot.FindAll(item => item.Revision == 0))
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -205,12 +207,17 @@ public sealed class SyncingTodoRepository : ITodoRepository, IDisposable, IAsync
                 catch (OperationCanceledException) { throw; }
                 catch (Exception exception)
                 {
-                    uploadsSucceeded = false;
+                    uploadFailure = exception;
                     Console.Error.WriteLine($"할 일 전송 실패({item.Id}): {exception.Message}");
                 }
             }
 
-            if (!uploadsSucceeded) return;
+            if (uploadFailure is not null)
+            {
+                PublishSynchronizationState(TodoSynchronizationStatus.Failed,
+                    uploadFailure.Message);
+                return;
+            }
 
             bool receivedChanges = false;
             SyncPage page;
@@ -229,9 +236,22 @@ public sealed class SyncingTodoRepository : ITodoRepository, IDisposable, IAsync
 
             if (receivedChanges)
                 Changed?.Invoke(this, EventArgs.Empty);
+            PublishSynchronizationState(TodoSynchronizationStatus.Succeeded);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception exception)
+        {
+            PublishSynchronizationState(TodoSynchronizationStatus.Failed,
+                exception.Message);
+            throw;
         }
         finally { _syncGate.Release(); }
     }
+
+    private void PublishSynchronizationState(TodoSynchronizationStatus status,
+        string? errorMessage = null) => SynchronizationStateChanged?.Invoke(
+            this, new TodoSynchronizationState(status, DateTimeOffset.Now,
+                errorMessage));
 
     public async Task StopAsync()
     {
@@ -271,3 +291,15 @@ public sealed class SyncingTodoRepository : ITodoRepository, IDisposable, IAsync
             throw new ObjectDisposedException(nameof(SyncingTodoRepository));
     }
 }
+
+public enum TodoSynchronizationStatus
+{
+    InProgress,
+    Succeeded,
+    Failed
+}
+
+public sealed record TodoSynchronizationState(
+    TodoSynchronizationStatus Status,
+    DateTimeOffset OccurredAt,
+    string? ErrorMessage = null);

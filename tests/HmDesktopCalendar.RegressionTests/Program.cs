@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using HmDesktopCalendar.DesktopIntegration;
+using HmDesktopCalendar.Todos;
+using HmDesktopCalendar.ViewModels;
 
 namespace HmDesktopCalendar.RegressionTests;
 
@@ -21,7 +25,9 @@ internal static class Program
             ("상태 점검은 손상된 책임만 복구한다", MaintenanceRepairsOnlyBrokenInvariant),
             ("취소는 원래 Bounds와 레이어를 함께 복원한다", CancelRestoresOriginalBounds),
             ("Explorer 재시작은 새 호스트에 정확히 재부착한다", ExplorerRestartReattaches),
-            ("화면과 겹치는 음수 좌표는 복구하지 않는다", VisibleNegativeBoundsArePreserved)
+            ("화면과 겹치는 음수 좌표는 복구하지 않는다", VisibleNegativeBoundsArePreserved),
+            ("달력 ViewModel이 연도와 월을 독립적으로 이동한다", CalendarViewModelMovesPredictably),
+            ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess)
         };
         int failures = 0;
         foreach (var test in tests)
@@ -35,6 +41,79 @@ internal static class Program
         }
         return failures == 0 ? 0 : 1;
     }
+
+    private static void CalendarViewModelMovesPredictably()
+    {
+        var viewModel = CreateCalendarViewModel();
+        viewModel.InitializeAsync().GetAwaiter().GetResult();
+        Assert(viewModel.CurrentYear == 2026 && viewModel.CurrentMonth == 7,
+            "초기 표시 월이 주입한 오늘과 다릅니다.");
+
+        viewModel.SelectYearAsync(2030).GetAwaiter().GetResult();
+        Assert(viewModel.CurrentYear == 2030 && viewModel.CurrentMonth == 7,
+            "연도 선택이 현재 월을 보존하지 않았습니다.");
+
+        viewModel.SelectMonthAsync(2).GetAwaiter().GetResult();
+        Assert(viewModel.CurrentYear == 2030 && viewModel.CurrentMonth == 2,
+            "월 선택이 현재 연도를 보존하지 않았습니다.");
+
+        viewModel.PreviousMonthAsync().GetAwaiter().GetResult();
+        Assert(viewModel.CurrentYear == 2030 && viewModel.CurrentMonth == 1,
+            "이전 달 이동 결과가 잘못되었습니다.");
+        viewModel.PreviousMonthAsync().GetAwaiter().GetResult();
+        Assert(viewModel.CurrentYear == 2029 && viewModel.CurrentMonth == 12,
+            "이전 달 이동이 연도 경계를 처리하지 못했습니다.");
+
+        viewModel.GoToTodayAsync().GetAwaiter().GetResult();
+        Assert(viewModel.CurrentYear == 2026 && viewModel.CurrentMonth == 7,
+            "오늘 바로가기가 주입한 오늘로 돌아오지 않았습니다.");
+    }
+
+    private static void SynchronizationStatePreservesLastSuccess()
+    {
+        var viewModel = CreateCalendarViewModel();
+        viewModel.SetSynchronizationAvailability(false);
+        Assert(viewModel.SynchronizationStatus == "로컬 전용",
+            "로그아웃 상태가 로컬 전용으로 표시되지 않았습니다.");
+
+        viewModel.SetSynchronizationAvailability(true);
+        viewModel.ApplySynchronizationState(new TodoSynchronizationState(
+            TodoSynchronizationStatus.InProgress,
+            new DateTimeOffset(2026, 7, 14, 9, 0, 0, TimeSpan.Zero)));
+        Assert(viewModel.IsSynchronizing &&
+               viewModel.SynchronizationStatus == "동기화 중…",
+            "진행 상태가 올바르게 표시되지 않았습니다.");
+
+        var succeededAt = new DateTimeOffset(2026, 7, 14, 12, 34, 0,
+            TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 7, 14)));
+        viewModel.ApplySynchronizationState(new TodoSynchronizationState(
+            TodoSynchronizationStatus.Succeeded, succeededAt));
+        Assert(!viewModel.IsSynchronizing &&
+               viewModel.SynchronizationStatus.Contains("마지막 성공 12:34"),
+            "마지막 성공 시각이 표시되지 않았습니다.");
+
+        viewModel.ApplySynchronizationState(new TodoSynchronizationState(
+            TodoSynchronizationStatus.Failed, succeededAt.AddMinutes(2),
+            "network"));
+        Assert(viewModel.IsSynchronizationFailed &&
+               viewModel.SynchronizationStatus.Contains("동기화 실패") &&
+               viewModel.SynchronizationStatus.Contains("마지막 성공 12:34"),
+            "실패 상태가 마지막 성공 시각을 보존하지 않았습니다.");
+
+        viewModel.SetSynchronizationAvailability(false);
+        viewModel.SetSynchronizationAvailability(true);
+        Assert(!viewModel.SynchronizationStatus.Contains("12:34"),
+            "로그아웃 뒤 이전 계정의 성공 시각이 남았습니다.");
+    }
+
+    private static CalendarViewModel CreateCalendarViewModel() => new(
+        new EmptyTodoRepository(),
+        () => new DateTime(2026, 7, 14),
+        update =>
+        {
+            update();
+            return Task.CompletedTask;
+        });
 
     private static void BoundsDoesNotChangeLayer()
     {
@@ -332,6 +411,29 @@ internal static class Program
     {
         if (!condition) throw new InvalidOperationException(message);
     }
+}
+
+internal sealed class EmptyTodoRepository : ITodoRepository
+{
+    public event EventHandler? Changed
+    {
+        add { }
+        remove { }
+    }
+
+    public Task<IReadOnlyList<TodoItem>> GetByDateAsync(DateOnly date,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<TodoItem>>([]);
+
+    public Task<IReadOnlyList<TodoItem>> GetByRangeAsync(DateOnly from,
+        DateOnly to, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<TodoItem>>([]);
+
+    public Task UpsertAsync(TodoItem item,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task DeleteAsync(Guid id,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 internal readonly record struct NativePositionCall(IntPtr Window,

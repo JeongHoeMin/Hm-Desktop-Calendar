@@ -7,23 +7,40 @@
   <Grid>
     <Border Classes="calendar-shell" Margin="6" Padding="10">
       <Grid RowDefinitions="44,24,*">
-        <Grid x:Name="HeaderBar" Grid.Row="0" ColumnDefinitions="44,58,*,58">
-          <Button x:Name="MenuButton" Classes="icon ghost" Content="☰"/>
-          <Button x:Name="PreviousButton" Classes="icon ghost" Grid.Column="1" Content="◀"/>
-          <Grid Grid.Column="2">
-            <TextBlock x:Name="MonthTitle" Classes="title" Text="{Binding DisplayMonth}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            <Border x:Name="MoveBar" IsVisible="False" Background="{DynamicResource SocarMoveBarBrush}"
-                    BorderBrush="{DynamicResource SocarBorderStrongBrush}" BorderThickness="1"
-                    CornerRadius="{DynamicResource SocarRadiusSmall}"
-                    Padding="14,6" Margin="10,2" Cursor="SizeAll"
-                    HorizontalAlignment="Stretch" PointerPressed="MoveBar_OnPointerPressed">
-              <TextBlock x:Name="MoveBarText" Text="☰  드래그하여 위치 이동"
-                         Foreground="{DynamicResource SocarTextInverseBrush}"
-                         FontWeight="SemiBold" HorizontalAlignment="Center"/>
-            </Border>
-          </Grid>
-          <Button x:Name="NextButton" Classes="icon ghost" Grid.Column="3" Content="▶"/>
+        <Grid x:Name="HeaderBar" Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+          <StackPanel x:Name="HeaderControls" Orientation="Horizontal" Spacing="2">
+            <Button x:Name="MenuButton" Classes="icon ghost" Content="☰"
+                    ToolTip.Tip="메뉴"/>
+            <Button x:Name="PreviousButton" Classes="icon ghost" Content="◀"
+                    ToolTip.Tip="이전 달"/>
+            <Button x:Name="YearButton" Classes="ghost header-selector"
+                    Content="{Binding DisplayYear}" ToolTip.Tip="연도 선택"/>
+            <Button x:Name="MonthButton" Classes="ghost header-selector"
+                    Content="{Binding DisplayMonthName}" ToolTip.Tip="월 선택"/>
+            <Button x:Name="NextButton" Classes="icon ghost" Content="▶"
+                    ToolTip.Tip="다음 달"/>
+          </StackPanel>
+
+          <StackPanel x:Name="SynchronizationPanel" Grid.Column="2"
+                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                      Spacing="2">
+            <TextBlock Classes="caption" Classes.status-warning="{Binding IsSynchronizationFailed}"
+                       Text="{Binding SynchronizationStatus}"
+                       HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
+            <ProgressBar Width="48" Height="3" HorizontalAlignment="Right"
+                         IsIndeterminate="True" IsVisible="{Binding IsSynchronizing}"/>
+          </StackPanel>
+
+          <Border x:Name="MoveBar" Grid.ColumnSpan="3" IsVisible="False"
+                  Background="{DynamicResource SocarMoveBarBrush}"
+                  BorderBrush="{DynamicResource SocarBorderStrongBrush}" BorderThickness="1"
+                  CornerRadius="{DynamicResource SocarRadiusSmall}"
+                  Padding="14,6" Margin="10,2" Cursor="SizeAll"
+                  HorizontalAlignment="Stretch" PointerPressed="MoveBar_OnPointerPressed">
+            <TextBlock x:Name="MoveBarText" Text="☰  드래그하여 위치 이동"
+                       Foreground="{DynamicResource SocarTextInverseBrush}"
+                       FontWeight="SemiBold" HorizontalAlignment="Center"/>
+          </Border>
         </Grid>
 
         <UniformGrid Grid.Row="1" Columns="7">
