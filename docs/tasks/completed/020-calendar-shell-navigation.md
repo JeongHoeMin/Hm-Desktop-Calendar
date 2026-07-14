@@ -1,7 +1,7 @@
 # 020 달력 상단과 메뉴·날짜 이동 개선
 
 ## 상태
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/calendar-shell-navigation`
 
 ## 목표
@@ -44,5 +44,5 @@
   Bounds 회귀 테스트로 다중 모니터 호환성을 확인했다.
 
 ## 작업 결과
-- 커밋: 미정
-- PR: 미정
+- 커밋: `32da61a`, `45a2951`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/5
