@@ -3,7 +3,16 @@ using Avalonia.Threading;
 
 namespace HmDesktopCalendar.DesktopIntegration;
 
-public enum CalendarHitTarget { None, Menu, PreviousMonth, NextMonth, Date }
+public enum CalendarHitTarget
+{
+    None,
+    Menu,
+    PreviousMonth,
+    YearPicker,
+    MonthPicker,
+    NextMonth,
+    Date
+}
 public readonly record struct CalendarHit(CalendarHitTarget Target, DateOnly? Date = null);
 
 public sealed class DesktopInteractionCoordinator : IDisposable
@@ -15,6 +24,9 @@ public sealed class DesktopInteractionCoordinator : IDisposable
     public event EventHandler? PreviousMonthRequested;
     public event EventHandler? NextMonthRequested;
     public event EventHandler? MenuRequested;
+    public event EventHandler? YearPickerRequested;
+    public event EventHandler? MonthPickerRequested;
+    public event EventHandler? FlyoutDismissRequested;
     public event EventHandler<DateOnly>? DateEditRequested;
     public DesktopInteractionCoordinator(GlobalPointerMonitor pointer,
         DesktopIconHitTester icons, DesktopSurfaceHitTester desktopSurface,
@@ -36,7 +48,12 @@ public sealed class DesktopInteractionCoordinator : IDisposable
         CalendarHit hit = _hitTest(p.X, p.Y);
         if (hit.Target == CalendarHitTarget.Menu) MenuRequested?.Invoke(this, EventArgs.Empty);
         else if (hit.Target == CalendarHitTarget.PreviousMonth) PreviousMonthRequested?.Invoke(this, EventArgs.Empty);
+        else if (hit.Target == CalendarHitTarget.YearPicker) YearPickerRequested?.Invoke(this, EventArgs.Empty);
+        else if (hit.Target == CalendarHitTarget.MonthPicker) MonthPickerRequested?.Invoke(this, EventArgs.Empty);
         else if (hit.Target == CalendarHitTarget.NextMonth) NextMonthRequested?.Invoke(this, EventArgs.Empty);
+        else DispatcherTimer.RunOnce(() =>
+            FlyoutDismissRequested?.Invoke(this, EventArgs.Empty),
+            TimeSpan.FromMilliseconds(100));
     });
     private void OnDoubleClick(object? sender, GlobalPointerMonitor.ScreenPoint p) => Dispatcher.UIThread.Post(() =>
     {
