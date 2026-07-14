@@ -1,14 +1,20 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- x:Class="HmDesktopCalendar.Views.LoginWindow" Width="420" Height="330" CanResize="False"
+ x:Class="HmDesktopCalendar.Views.LoginWindow" Classes="dialog"
+ Width="440" Height="360" MinWidth="440" MinHeight="360" CanResize="False"
  WindowStartupLocation="CenterScreen" Title="HmDesktopCalendar 계정" Topmost="True">
- <Grid Margin="28" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
-  <TextBlock Text="계정 연결" FontSize="26" FontWeight="SemiBold"/>
-  <TextBlock Grid.Row="1" Text="여러 PC에서 할 일을 실시간으로 동기화합니다." Margin="0,6,0,16"/>
-  <TextBox x:Name="EmailBox" Grid.Row="2" PlaceholderText="이메일"/>
-  <TextBox x:Name="PasswordBox" Grid.Row="3" PlaceholderText="비밀번호 (8자 이상)" PasswordChar="●" Margin="0,8"/>
-  <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-   <Button Content="로그인" Click="Login_OnClick"/><Button Content="회원가입" Click="Register_OnClick"/>
-  </StackPanel>
-  <TextBlock x:Name="ErrorText" Grid.Row="5" Foreground="#C03030" TextWrapping="Wrap" Margin="0,12,0,0"/>
- </Grid>
+ <Border Classes="card" Margin="24">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+   <TextBlock Classes="display" Text="계정 연결"/>
+   <TextBlock Classes="body" Grid.Row="1" Text="여러 PC에서 할 일을 실시간으로 동기화합니다."
+              Foreground="{DynamicResource SocarTextSecondaryBrush}" Margin="0,4,0,20"/>
+   <TextBox x:Name="EmailBox" Grid.Row="2" PlaceholderText="이메일"/>
+   <TextBox x:Name="PasswordBox" Grid.Row="3" PlaceholderText="비밀번호 (8자 이상)" PasswordChar="●" Margin="0,10"/>
+   <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+    <Button Classes="secondary" Content="회원가입" Click="Register_OnClick"/>
+    <Button Classes="primary" Content="로그인" Click="Login_OnClick"/>
+   </StackPanel>
+   <TextBlock x:Name="ErrorText" Classes="caption status-warning" Grid.Row="5"
+              TextWrapping="Wrap" Margin="0,12,0,0"/>
+  </Grid>
+ </Border>
 </Window>
