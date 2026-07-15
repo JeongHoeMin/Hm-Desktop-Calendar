@@ -5,6 +5,7 @@ import auth from './plugins/auth.js'
 import realtime from './realtime/hub.js'
 import authRoutes from './auth/routes.js'
 import todoRoutes from './todos/routes.js'
+import calendarRoutes from './calendar/routes.js'
 
 export async function buildApp(config: AppConfig) {
   const app = Fastify({ logger: { level: config.logLevel } })
@@ -14,6 +15,7 @@ export async function buildApp(config: AppConfig) {
   await app.register(realtime)
   await app.register(authRoutes)
   await app.register(todoRoutes)
+  await app.register(calendarRoutes)
   app.get('/health', async () => { await app.db.query('SELECT 1'); return { status: 'ok' } })
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     if (error.validation) return reply.code(400).send({ message: '요청 형식이 올바르지 않습니다.', details: error.validation })
