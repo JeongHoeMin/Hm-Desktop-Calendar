@@ -49,4 +49,27 @@ public sealed class CalendarItem
 
     [JsonIgnore]
     public bool IsAnniversary => Kind == CalendarItemKind.Anniversary;
+
+    [JsonIgnore]
+    public bool HasSeriesScope => Recurrence is not null || EndDate > StartDate;
+
+    [JsonIgnore]
+    public bool HasScheduleSeriesScope => !IsAnniversary && HasSeriesScope;
+
+    [JsonIgnore]
+    public string SeriesBadgeText => IsAnniversary ? "매년" :
+        Recurrence is { } recurrence ? recurrence.Frequency switch
+        {
+            RecurrenceFrequency.Daily => recurrence.Interval == 1
+                ? "매일" : $"{recurrence.Interval}일마다",
+            RecurrenceFrequency.Weekly => recurrence.Interval == 1
+                ? "매주" : $"{recurrence.Interval}주마다",
+            RecurrenceFrequency.Monthly => recurrence.Interval == 1
+                ? "매월" : $"{recurrence.Interval}개월마다",
+            RecurrenceFrequency.Yearly => recurrence.Interval == 1
+                ? "매년" : $"{recurrence.Interval}년마다",
+            _ => "반복"
+        } : EndDate > StartDate
+            ? $"{EndDate.DayNumber - StartDate.DayNumber + 1}일 기간"
+            : string.Empty;
 }

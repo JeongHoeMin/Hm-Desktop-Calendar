@@ -47,6 +47,12 @@
                             <TextBlock Text="기념일" Foreground="#0041E6"
                                        FontSize="10" FontWeight="Bold" />
                           </Border>
+                          <Border IsVisible="{Binding HasScheduleSeriesScope}"
+                                  Background="#E9F8F0" CornerRadius="5" Padding="5,1">
+                            <TextBlock Text="{Binding SeriesBadgeText}"
+                                       Foreground="#17663A" FontSize="10"
+                                       FontWeight="Bold" />
+                          </Border>
                           <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
                                      TextTrimming="CharacterEllipsis" />
                         </StackPanel>
@@ -158,6 +164,102 @@
                       IsChecked="{Binding Draft.IsAnniversary, Mode=TwoWay}"
                       ToolTip.Tip="기념일은 완료 상태 없이 매년 같은 날짜에 표시됩니다." />
 
+            <StackPanel Spacing="10" IsVisible="{Binding Draft.IsSchedule}">
+              <TextBlock Text="일정 범위" FontWeight="SemiBold" />
+              <WrapPanel Orientation="Horizontal">
+                <RadioButton Content="하루" Tag="Single" GroupName="SeriesMode"
+                             IsChecked="{Binding Draft.IsSingleMode, Mode=OneWay}"
+                             Margin="0,0,16,0" Click="SeriesMode_OnClick" />
+                <RadioButton Content="기간" Tag="Range" GroupName="SeriesMode"
+                             IsChecked="{Binding Draft.IsRangeMode, Mode=OneWay}"
+                             Margin="0,0,16,0" Click="SeriesMode_OnClick" />
+                <RadioButton Content="반복" Tag="Recurring" GroupName="SeriesMode"
+                             IsChecked="{Binding Draft.IsRecurringMode, Mode=OneWay}"
+                             Click="SeriesMode_OnClick" />
+              </WrapPanel>
+
+              <Border Padding="10" Background="#F8F9FC"
+                      BorderBrush="{DynamicResource SocarBorderBrush}"
+                      BorderThickness="1" CornerRadius="8">
+                <TextBlock Text="{Binding Draft.SeriesSummary}" Classes="caption"
+                           TextWrapping="Wrap" />
+              </Border>
+
+              <StackPanel Spacing="10"
+                          IsVisible="{Binding Draft.IsRangeMode}">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="시작일" FontWeight="SemiBold" />
+                  <TextBox Text="{Binding Draft.StartDateText}" IsReadOnly="True" />
+                </StackPanel>
+                <StackPanel Spacing="6">
+                  <TextBlock Text="종료일" FontWeight="SemiBold" />
+                  <DatePicker SelectedDate="{Binding Draft.EndDateValue,
+                                      Mode=TwoWay}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+              </StackPanel>
+
+              <StackPanel Spacing="10" IsVisible="{Binding Draft.IsRecurringMode}">
+                <Grid ColumnDefinitions="*,12,*">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="반복 빈도" FontWeight="SemiBold" />
+                    <ComboBox SelectedIndex="{Binding Draft.RecurrenceFrequencyIndex,
+                                              Mode=TwoWay}">
+                      <ComboBoxItem Content="매일" />
+                      <ComboBoxItem Content="매주" />
+                      <ComboBoxItem Content="매월" />
+                      <ComboBoxItem Content="매년" />
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="6">
+                    <TextBlock Text="반복 간격" FontWeight="SemiBold" />
+                    <NumericUpDown Value="{Binding Draft.RecurrenceInterval,
+                                           Mode=TwoWay}" Minimum="1" Increment="1"
+                                   FormatString="0" />
+                  </StackPanel>
+                </Grid>
+
+                <StackPanel Spacing="6"
+                            IsVisible="{Binding Draft.IsWeeklyRecurrence}">
+                  <TextBlock Text="반복 요일" FontWeight="SemiBold" />
+                  <WrapPanel Orientation="Horizontal">
+                    <CheckBox Content="일" IsChecked="{Binding Draft.Sunday}"
+                              Margin="0,0,10,0" />
+                    <CheckBox Content="월" IsChecked="{Binding Draft.Monday}"
+                              Margin="0,0,10,0" />
+                    <CheckBox Content="화" IsChecked="{Binding Draft.Tuesday}"
+                              Margin="0,0,10,0" />
+                    <CheckBox Content="수" IsChecked="{Binding Draft.Wednesday}"
+                              Margin="0,0,10,0" />
+                    <CheckBox Content="목" IsChecked="{Binding Draft.Thursday}"
+                              Margin="0,0,10,0" />
+                    <CheckBox Content="금" IsChecked="{Binding Draft.Friday}"
+                              Margin="0,0,10,0" />
+                    <CheckBox Content="토" IsChecked="{Binding Draft.Saturday}" />
+                  </WrapPanel>
+                </StackPanel>
+
+                <CheckBox Content="반복 종료일 사용"
+                          IsChecked="{Binding Draft.HasRecurrenceUntil,
+                                      Mode=TwoWay}" />
+                <StackPanel Spacing="6"
+                            IsVisible="{Binding Draft.HasRecurrenceUntil}">
+                  <TextBlock Text="반복 종료일 (포함)" FontWeight="SemiBold" />
+                  <DatePicker SelectedDate="{Binding Draft.RecurrenceUntilValue,
+                                      Mode=TwoWay}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+
+            <Border Padding="10" Background="#FFF4D6" CornerRadius="8"
+                    IsVisible="{Binding Draft.ShowsSeriesScopeNotice}">
+              <TextBlock Text="{Binding Draft.SeriesScopeText}" Foreground="#7A4A00"
+                         FontWeight="SemiBold" TextWrapping="Wrap" />
+            </Border>
+
+            <TextBlock Text="기념일은 완료 상태 없이 매년 같은 날짜에 반복됩니다."
+                       IsVisible="{Binding Draft.IsAnniversary}" Classes="caption"
+                       TextWrapping="Wrap" />
+
             <StackPanel Spacing="8">
               <TextBlock Text="시간" FontWeight="SemiBold" />
               <TimePicker SelectedTime="{Binding Draft.TimeValue, Mode=TwoWay}"
@@ -191,7 +293,8 @@
                        MinHeight="96" MaxLength="10000" />
             </StackPanel>
 
-            <CheckBox Content="완료된 일정" IsChecked="{Binding Draft.IsCompleted,
+            <CheckBox Content="{Binding Draft.CompletionLabel}"
+                      IsChecked="{Binding Draft.IsCompleted,
                       Mode=TwoWay}" IsVisible="{Binding Draft.IsSchedule}" />
 
             <StackPanel Spacing="8">
