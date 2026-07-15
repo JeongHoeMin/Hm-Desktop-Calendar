@@ -48,11 +48,15 @@ internal static class Program
             ("발생 일정 변경은 전체 시리즈 원본에 적용된다", OccurrenceChangesApplyToWholeSeries),
             ("발생 일정 조회는 결정론적으로 정렬된다", OccurrencesAreDeterministicallyOrdered),
             ("텍스트 색상은 형식과 WCAG 대비를 검증한다", TextColorsRequireAccessibleContrast),
+            ("날짜 배경은 정규화하고 읽기 쉬운 전경을 선택한다", DateBackgroundColorsAreNormalized),
             ("이전 기본 색상은 접근 가능한 기본값으로 마이그레이션한다", LegacyTextColorIsMigrated),
             ("편집 초안은 변경을 감지하고 시리즈 필드를 보존한다", EditorDraftPreservesSeriesFields),
+            ("기념일 편집은 완료 없는 연간 반복을 만든다", AnniversaryDraftCreatesYearlySeries),
+            ("날짜 배경 편집은 저장과 초기화를 같은 엔터티에 적용한다", DateBackgroundEditorConverges),
             ("저장하지 않은 편집은 일정·날짜 전환을 차단한다", EditorNavigationProtectsUnsavedChanges),
             ("추가·수정·완료·삭제는 중복 없이 저장된다", EditorOperationsDoNotDuplicateItems),
             ("달력 미리보기는 일정 텍스트 색상을 사용한다", CalendarPreviewUsesItemColor),
+            ("달력은 날짜 배경과 기념일 배지를 함께 표시한다", CalendarPreviewShowsBackgroundAndAnniversary),
             ("서버 병합은 전송 전 로컬 변경을 보존한다", ServerMergePreservesPendingLocalChanges),
             ("v2 계정 범위는 익명 데이터만 최초 계정으로 이동한다", CalendarScopesStayIsolated),
             ("v2 원격 클라이언트는 통합 일정 계약을 사용한다", RemoteCalendarClientUsesV2Contract)
@@ -487,6 +491,45 @@ internal static class Program
             "접근성 팔레트에 WCAG AA를 만족하지 않는 색상이 있습니다.");
     }
 
+    private static void DateBackgroundColorsAreNormalized() =>
+        WithTempDirectory(directory =>
+        {
+            DateOnly date = new(2026, 7, 15);
+            Assert(CalendarCellColor.Validate("#d0ebff") is
+                    { IsValid: true, NormalizedColor: "#D0EBFF" },
+                "날짜 배경색을 대문자 HEX로 정규화하지 못했습니다.");
+            Assert(CalendarCellColor.GetForeground("#FFFFFF") ==
+                   CalendarCellColor.LightForeground &&
+                   CalendarCellColor.GetForeground("#141A24") ==
+                   CalendarCellColor.DarkForeground,
+                "밝고 어두운 배경에 읽기 쉬운 전경색을 선택하지 못했습니다.");
+            Assert(CalendarCellColor.GetDecorationId(date) ==
+                   CalendarCellColor.GetDecorationId(date) &&
+                   CalendarCellColor.GetDecorationId(date) !=
+                   CalendarCellColor.GetDecorationId(date.AddDays(1)),
+                "날짜별 배경 ID가 결정적으로 생성되지 않았습니다.");
+
+            using var repository = new LocalCalendarRepository(directory);
+            var decoration = new DateCellDecoration
+            {
+                Id = CalendarCellColor.GetDecorationId(date),
+                Date = date,
+                Kind = DateCellDecorationKind.Highlight,
+                Color = "#d0ebff",
+                Label = "저장하지 않을 라벨"
+            };
+            repository.UpsertDecorationAsync(decoration).GetAwaiter().GetResult();
+            DateCellDecoration stored = repository
+                .GetDecorationsByRangeAsync(date, date).GetAwaiter()
+                .GetResult().Single();
+            Assert(stored.Color == "#D0EBFF" && stored.Label.Length == 0,
+                "날짜 배경을 정규화해 직렬화하지 못했습니다.");
+            decoration.Color = "D0EBFF";
+            AssertThrows<ArgumentException>(() => repository
+                .UpsertDecorationAsync(decoration).GetAwaiter().GetResult(),
+                "잘못된 날짜 배경 HEX를 저장했습니다.");
+        });
+
     private static void LegacyTextColorIsMigrated() =>
         WithTempDirectory(directory =>
         {
@@ -561,6 +604,63 @@ internal static class Program
                edited.StartDate == source.StartDate &&
                edited.EndDate == source.EndDate,
             "편집하지 않는 시리즈 필드를 보존하지 못했습니다.");
+    }
+
+    private static void AnniversaryDraftCreatesYearlySeries()
+    {
+        DateOnly leapDate = new(2024, 2, 29);
+        var draft = new CalendarEditorDraftViewModel();
+        draft.BeginNew(leapDate);
+        draft.Title = "창립 기념일";
+        draft.IsCompleted = true;
+        draft.IsAnniversary = true;
+
+        CalendarItem item = draft.CreateItem();
+        Assert(item.IsAnniversary && !item.IsCompleted &&
+               item.Recurrence is
+               { Frequency: RecurrenceFrequency.Yearly, Interval: 1,
+                 Until: null, Count: null },
+            "기념일을 완료 없는 무기한 연간 반복으로 만들지 못했습니다.");
+        AssertOccurrenceDates(CalendarOccurrenceEngine.GetOccurrences(item,
+            new DateOnly(2025, 1, 1), new DateOnly(2028, 12, 31)),
+            new DateOnly(2028, 2, 29));
+
+        item.IsCompleted = true;
+        AssertThrows<ArgumentException>(() =>
+            CalendarOccurrenceEngine.GetOccurrences(item, leapDate, leapDate),
+            "완료된 기념일을 도메인 규칙이 허용했습니다.");
+    }
+
+    private static void DateBackgroundEditorConverges()
+    {
+        var repository = new InMemoryCalendarRepository();
+        DateOnly date = new(2026, 7, 15);
+        using var viewModel = new CalendarEditorViewModel(
+            date, repository, ImmediateUpdate);
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        viewModel.Background.SetPaletteColor("#343a40");
+        Assert(viewModel.SaveBackgroundAsync().GetAwaiter().GetResult(),
+            "날짜 배경을 저장하지 못했습니다.");
+        DateCellDecoration first = repository
+            .GetDecorationsByRangeAsync(date, date).GetAwaiter()
+            .GetResult().Single();
+        Assert(first.Id == CalendarCellColor.GetDecorationId(date) &&
+               first.Kind == DateCellDecorationKind.Highlight,
+            "날짜 배경을 결정적 동기화 엔터티로 저장하지 않았습니다.");
+
+        viewModel.Background.SetPaletteColor("#D0EBFF");
+        viewModel.SaveBackgroundAsync().GetAwaiter().GetResult();
+        IReadOnlyList<DateCellDecoration> updated = repository
+            .GetDecorationsByRangeAsync(date, date).GetAwaiter().GetResult();
+        Assert(updated.Count == 1 && updated[0].Id == first.Id &&
+               updated[0].Color == "#D0EBFF",
+            "배경 수정이 같은 동기화 엔터티에 수렴하지 않았습니다.");
+
+        viewModel.Background.Clear();
+        viewModel.SaveBackgroundAsync().GetAwaiter().GetResult();
+        Assert(repository.GetDecorationsByRangeAsync(date, date).GetAwaiter()
+                   .GetResult().Count == 0,
+            "배경 초기화가 동기화 엔터티를 삭제하지 않았습니다.");
     }
 
     private static void EditorNavigationProtectsUnsavedChanges()
@@ -653,6 +753,46 @@ internal static class Program
         var brush = preview.TextBrush as Avalonia.Media.SolidColorBrush;
         Assert(brush?.Color == Avalonia.Media.Color.Parse("#7A2432"),
             "달력 미리보기에 일정 텍스트 색상이 반영되지 않았습니다.");
+    }
+
+    private static void CalendarPreviewShowsBackgroundAndAnniversary()
+    {
+        var repository = new InMemoryCalendarRepository();
+        DateOnly date = new(2026, 7, 15);
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "창립 기념일",
+            Kind = CalendarItemKind.Anniversary,
+            StartDate = date,
+            EndDate = date,
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Yearly)
+        }).GetAwaiter().GetResult();
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "일반 일정", StartDate = date, EndDate = date
+        }).GetAwaiter().GetResult();
+        repository.UpsertDecorationAsync(new DateCellDecoration
+        {
+            Id = CalendarCellColor.GetDecorationId(date),
+            Date = date,
+            Kind = DateCellDecorationKind.Highlight,
+            Color = "#343A40"
+        }).GetAwaiter().GetResult();
+
+        var viewModel = new CalendarViewModel(repository,
+            () => new DateTime(2026, 7, 15), ImmediateUpdate);
+        viewModel.InitializeAsync().GetAwaiter().GetResult();
+        CalendarDayViewModel day = viewModel.Days.Single(item =>
+            item.Date == date);
+        var background = day.CellBackgroundBrush as
+            Avalonia.Media.SolidColorBrush;
+        var foreground = day.CellForegroundBrush as
+            Avalonia.Media.SolidColorBrush;
+        Assert(day.IncompleteCount == 1 && day.CompletedCount == 0 &&
+               day.AllTasks.Count == 2 && day.AllTasks[0].IsAnniversary &&
+               background?.Color == Avalonia.Media.Color.Parse("#343A40") &&
+               foreground?.Color == Avalonia.Media.Color.Parse("#FFFFFF"),
+            "날짜 배경, 자동 전경 또는 기념일 배지를 달력에 반영하지 못했습니다.");
     }
 
     private static void ServerMergePreservesPendingLocalChanges() =>

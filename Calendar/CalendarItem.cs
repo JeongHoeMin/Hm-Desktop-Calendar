@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace HmDesktopCalendar.Calendar;
 
@@ -45,4 +46,7 @@ public sealed class CalendarItem
     public long Revision { get; set; }
     public long Cursor { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    [JsonIgnore]
+    public bool IsAnniversary => Kind == CalendarItemKind.Anniversary;
 }

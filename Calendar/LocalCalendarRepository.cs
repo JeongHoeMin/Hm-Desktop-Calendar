@@ -121,6 +121,12 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(decoration);
+        CellColorValidation color = CalendarCellColor.Validate(decoration.Color);
+        if (!color.IsValid) throw new ArgumentException(color.Message,
+            nameof(decoration));
+        decoration.Color = color.NormalizedColor;
+        if (decoration.Kind == DateCellDecorationKind.Highlight)
+            decoration.Label = string.Empty;
         return MutateAsync(document =>
         {
             decoration.Revision = 0;

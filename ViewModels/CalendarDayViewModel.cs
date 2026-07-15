@@ -4,17 +4,19 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using HmDesktopCalendar.Calendar;
 
 namespace HmDesktopCalendar.ViewModels;
 
 public sealed class CalendarTaskPreviewViewModel
 {
     public CalendarTaskPreviewViewModel(string timeText, string title,
-        bool isCompleted, string color)
+        bool isCompleted, string color, bool isAnniversary = false)
     {
         TimeText = timeText;
         Title = title;
         IsCompleted = isCompleted;
+        IsAnniversary = isAnniversary;
         TextBrush = Color.TryParse(color, out Color parsed)
             ? new SolidColorBrush(parsed) : Brushes.Black;
     }
@@ -22,6 +24,8 @@ public sealed class CalendarTaskPreviewViewModel
     public string TimeText { get; }
     public string Title { get; }
     public bool IsCompleted { get; }
+    public bool IsAnniversary { get; }
+    public string BadgeText => IsAnniversary ? "기념일" : string.Empty;
     public IBrush TextBrush { get; }
     public double Opacity => IsCompleted ? 0.5 : 1.0;
     public TextDecorationCollection? TitleDecorations =>
@@ -38,13 +42,16 @@ public sealed class CalendarDayViewModel : ObservableObject
         Array.Empty<CalendarTaskPreviewViewModel>();
     private int _capacity;
     private int _hiddenCount;
+    private string? _backgroundColor;
 
     public CalendarDayViewModel(DateOnly date, bool isCurrentMonth,
         int incompleteCount, int completedCount,
-        IReadOnlyList<CalendarTaskPreviewViewModel> allTasks, int capacity)
+        IReadOnlyList<CalendarTaskPreviewViewModel> allTasks, int capacity,
+        string? backgroundColor = null)
     {
         _capacity = capacity;
-        Update(date, isCurrentMonth, incompleteCount, completedCount, allTasks);
+        Update(date, isCurrentMonth, incompleteCount, completedCount, allTasks,
+            backgroundColor);
     }
 
     public ObservableCollection<CalendarTaskPreviewViewModel> VisibleTasks
@@ -112,6 +119,18 @@ public sealed class CalendarDayViewModel : ObservableObject
     public bool HasHiddenTasks => HiddenCount > 0;
     public string HiddenText => $"+{HiddenCount}개 더 있음";
     public double CellOpacity => IsCurrentMonth ? 1.0 : 0.45;
+    public IBrush? CellBackgroundBrush => ParseBrush(_backgroundColor);
+    public IBrush? CellForegroundBrush
+    {
+        get
+        {
+            CellColorValidation validation = CalendarCellColor.Validate(
+                _backgroundColor);
+            return validation.IsValid ? ParseBrush(
+                CalendarCellColor.GetForeground(validation.NormalizedColor)) :
+                null;
+        }
+    }
 
     public void SetCapacity(int capacity)
     {
@@ -123,13 +142,21 @@ public sealed class CalendarDayViewModel : ObservableObject
 
     public void Update(DateOnly date, bool isCurrentMonth,
         int incompleteCount, int completedCount,
-        IReadOnlyList<CalendarTaskPreviewViewModel> allTasks)
+        IReadOnlyList<CalendarTaskPreviewViewModel> allTasks,
+        string? backgroundColor = null)
     {
         Date = date;
         IsCurrentMonth = isCurrentMonth;
         IncompleteCount = incompleteCount;
         CompletedCount = completedCount;
         _allTasks = allTasks;
+        if (!string.Equals(_backgroundColor, backgroundColor,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            _backgroundColor = backgroundColor;
+            OnPropertyChanged(nameof(CellBackgroundBrush));
+            OnPropertyChanged(nameof(CellForegroundBrush));
+        }
         ApplyVisibility();
     }
 
@@ -144,4 +171,8 @@ public sealed class CalendarDayViewModel : ObservableObject
             VisibleTasks.Add(task);
         HiddenCount = _allTasks.Count - visibleCount;
     }
+
+    private static IBrush? ParseBrush(string? value) =>
+        Color.TryParse(value, out Color color)
+            ? new SolidColorBrush(color) : null;
 }

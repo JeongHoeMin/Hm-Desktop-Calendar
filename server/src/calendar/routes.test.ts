@@ -148,4 +148,32 @@ describe('calendar v2 routes', () => {
     expect(responses.every(response => response.statusCode === 400)).toBe(true)
     expect(query).not.toHaveBeenCalled()
   })
+
+  it('requires anniversaries to be incomplete yearly series', async () => {
+    const query = vi.fn(async () => ({ rows: [] }))
+    const app = createApp(query)
+    await app.register(calendarRoutes)
+    const base = {
+      kind: 'anniversary', title: '창립 기념일', notes: '',
+      startDate: '2024-02-29', endDate: '2024-02-29',
+      startTime: null, endTime: null, allDay: true,
+      color: '#0041E6', reminders: []
+    }
+    const yearly = {
+      frequency: 'yearly', interval: 1, daysOfWeek: [], until: null,
+      count: null
+    }
+    const responses = await Promise.all([
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, completed: false, recurrence: null } }),
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, completed: true, recurrence: yearly } }),
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, completed: false, recurrence: {
+          ...yearly, interval: 2
+        } } })
+    ])
+    expect(responses.every(response => response.statusCode === 400)).toBe(true)
+    expect(query).not.toHaveBeenCalled()
+  })
 })

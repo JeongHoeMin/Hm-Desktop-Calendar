@@ -47,6 +47,14 @@ public static class CalendarOccurrenceEngine
             throw new ArgumentException(
                 "종료 날짜는 시작 날짜보다 빠를 수 없습니다.", nameof(item));
 
+        if (item.Kind == CalendarItemKind.Anniversary &&
+            (item.IsCompleted || item.Recurrence is not
+                { Frequency: RecurrenceFrequency.Yearly, Interval: 1,
+                  Until: null, Count: null }))
+            throw new ArgumentException(
+                "기념일은 완료되지 않은 무기한 연간 반복 일정이어야 합니다.",
+                nameof(item));
+
         if (item.Recurrence is not { } recurrence) return;
         if (item.EndDate != item.StartDate)
             throw new ArgumentException(
