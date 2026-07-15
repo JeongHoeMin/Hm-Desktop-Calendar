@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using HmDesktopCalendar.Authentication;
 using HmDesktopCalendar.Calendar;
 using HmDesktopCalendar.DesktopIntegration;
 using HmDesktopCalendar.Todos;
@@ -43,7 +46,16 @@ internal static class Program
             ("무기한 반복은 조회 범위 안에서만 계산한다", UnboundedOccurrencesStayBounded),
             ("비지원 반복 규칙을 명시적으로 거부한다", UnsupportedRecurrencesAreRejected),
             ("발생 일정 변경은 전체 시리즈 원본에 적용된다", OccurrenceChangesApplyToWholeSeries),
-            ("발생 일정 조회는 결정론적으로 정렬된다", OccurrencesAreDeterministicallyOrdered)
+            ("발생 일정 조회는 결정론적으로 정렬된다", OccurrencesAreDeterministicallyOrdered),
+            ("텍스트 색상은 형식과 WCAG 대비를 검증한다", TextColorsRequireAccessibleContrast),
+            ("이전 기본 색상은 접근 가능한 기본값으로 마이그레이션한다", LegacyTextColorIsMigrated),
+            ("편집 초안은 변경을 감지하고 시리즈 필드를 보존한다", EditorDraftPreservesSeriesFields),
+            ("저장하지 않은 편집은 일정·날짜 전환을 차단한다", EditorNavigationProtectsUnsavedChanges),
+            ("추가·수정·완료·삭제는 중복 없이 저장된다", EditorOperationsDoNotDuplicateItems),
+            ("달력 미리보기는 일정 텍스트 색상을 사용한다", CalendarPreviewUsesItemColor),
+            ("서버 병합은 전송 전 로컬 변경을 보존한다", ServerMergePreservesPendingLocalChanges),
+            ("v2 계정 범위는 익명 데이터만 최초 계정으로 이동한다", CalendarScopesStayIsolated),
+            ("v2 원격 클라이언트는 통합 일정 계약을 사용한다", RemoteCalendarClientUsesV2Contract)
         };
         int failures = 0;
         foreach (var test in tests)
@@ -456,6 +468,356 @@ internal static class Program
         throw new InvalidOperationException(message);
     }
 
+    private static void TextColorsRequireAccessibleContrast()
+    {
+        TextColorValidation blue = CalendarTextColor.Validate("#0041e6");
+        Assert(blue.IsValid && blue.NormalizedColor == "#0041E6" &&
+               blue.ContrastRatio >= 4.5,
+            "접근 가능한 색상을 정규화하거나 허용하지 못했습니다.");
+        Assert(!CalendarTextColor.Validate("#FFFFFF").IsValid,
+            "대비가 부족한 흰색을 허용했습니다.");
+        Assert(!CalendarTextColor.Validate("0041E6").IsValid,
+            "#이 없는 색상 형식을 허용했습니다.");
+        string[] palette =
+        [
+            "#141A24", "#354153", "#0041E6", "#0A1491", "#7A2432",
+            "#2F6B3C"
+        ];
+        Assert(palette.All(color => CalendarTextColor.Validate(color).IsValid),
+            "접근성 팔레트에 WCAG AA를 만족하지 않는 색상이 있습니다.");
+    }
+
+    private static void LegacyTextColorIsMigrated() =>
+        WithTempDirectory(directory =>
+        {
+            DateOnly date = new(2026, 7, 15);
+            File.WriteAllText(Path.Combine(directory, "calendar-v2.json"),
+                JsonSerializer.Serialize(new
+                {
+                    Version = 2,
+                    Items = new[]
+                    {
+                        new CalendarItem
+                        {
+                            Title = "이전 색상 일정",
+                            StartDate = date,
+                            EndDate = date,
+                            Color = CalendarTextColor.LegacyDefaultColor
+                        }
+                    },
+                    Decorations = Array.Empty<DateCellDecoration>(),
+                    SyncState = new SyncState(0)
+                }));
+            using var repository = new LocalCalendarRepository(directory);
+            CalendarItem migrated = repository.GetItemsByRangeAsync(date, date)
+                .GetAwaiter().GetResult().Single();
+            Assert(migrated.Color == CalendarTextColor.DefaultColor,
+                "이전 기본 텍스트 색상을 접근 가능한 기본값으로 바꾸지 않았습니다.");
+            migrated.Color = "#FFFFFF";
+            AssertThrows<ArgumentException>(() => repository
+                .UpsertItemAsync(migrated).GetAwaiter().GetResult(),
+                "저장소가 대비가 부족한 텍스트 색상을 허용했습니다.");
+        });
+
+    private static void EditorDraftPreservesSeriesFields()
+    {
+        DateOnly date = new(2026, 7, 15);
+        var source = new CalendarItem
+        {
+            Title = "원본 일정",
+            Notes = "원본 메모",
+            StartDate = date,
+            EndDate = date,
+            Color = "#141A24",
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly, 2,
+                [DayOfWeek.Wednesday], new DateOnly(2026, 12, 31)),
+            Reminders = [new CalendarReminder(30)]
+        };
+        var draft = new CalendarEditorDraftViewModel();
+
+        draft.BeginEdit(source);
+        Assert(!draft.HasUnsavedChanges && draft.IsEditing,
+            "원본을 불러오자마자 변경된 것으로 표시했습니다.");
+        draft.Title = "수정 일정";
+        draft.Notes = "수정 메모";
+        draft.TimeValue = new TimeSpan(9, 30, 0);
+        draft.IsCompleted = true;
+        draft.Color = "#0a1491";
+        Assert(draft.HasUnsavedChanges && draft.CanSave,
+            "유효한 편집 변경을 저장 가능 상태로 만들지 못했습니다.");
+
+        CalendarItem edited = draft.CreateItem();
+        Assert(edited.Id == source.Id && edited.Title == "수정 일정" &&
+               edited.Notes == "수정 메모" &&
+               edited.StartTime == new TimeOnly(9, 30) &&
+               edited.IsCompleted && edited.Color == "#0A1491",
+            "편집 가능한 필드를 일정 원본에 반영하지 못했습니다.");
+        Assert(edited.Recurrence?.Frequency == source.Recurrence?.Frequency &&
+               edited.Recurrence?.Interval == source.Recurrence?.Interval &&
+               edited.Recurrence?.Until == source.Recurrence?.Until &&
+               edited.Recurrence?.DaysOfWeek?.SequenceEqual(
+                   source.Recurrence?.DaysOfWeek ?? []) == true &&
+               edited.Reminders.SequenceEqual(source.Reminders) &&
+               edited.StartDate == source.StartDate &&
+               edited.EndDate == source.EndDate,
+            "편집하지 않는 시리즈 필드를 보존하지 못했습니다.");
+    }
+
+    private static void EditorNavigationProtectsUnsavedChanges()
+    {
+        var repository = new InMemoryCalendarRepository();
+        DateOnly firstDate = new(2026, 7, 15);
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "첫 일정", StartDate = firstDate, EndDate = firstDate
+        }).GetAwaiter().GetResult();
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "둘째 일정", StartDate = firstDate, EndDate = firstDate
+        }).GetAwaiter().GetResult();
+        using var viewModel = new CalendarEditorViewModel(
+            firstDate, repository, ImmediateUpdate);
+        Assert(viewModel.LoadAsync().GetAwaiter().GetResult(),
+            "초기 편집 날짜를 불러오지 못했습니다.");
+        viewModel.BeginEdit(viewModel.Items[0]);
+        viewModel.Draft.Title = "저장 전 일정";
+        Guid? editingId = viewModel.Draft.SourceId;
+        Assert(!viewModel.BeginEdit(viewModel.Items[1]) &&
+               viewModel.Draft.SourceId == editingId,
+            "저장하지 않은 변경을 버리고 다른 일정을 선택했습니다.");
+
+        bool blocked = viewModel.LoadDateAsync(new DateOnly(2026, 7, 16))
+            .GetAwaiter().GetResult();
+        Assert(!blocked && viewModel.Date == firstDate &&
+               viewModel.Draft.Title == "저장 전 일정",
+            "저장하지 않은 변경을 버리고 날짜를 이동했습니다.");
+        bool discarded = viewModel.LoadDateAsync(new DateOnly(2026, 7, 16),
+            true).GetAwaiter().GetResult();
+        Assert(discarded && viewModel.Date == new DateOnly(2026, 7, 16) &&
+               !viewModel.Draft.HasUnsavedChanges,
+            "명시적 취소 뒤 날짜를 이동하지 못했습니다.");
+    }
+
+    private static void EditorOperationsDoNotDuplicateItems()
+    {
+        var repository = new InMemoryCalendarRepository();
+        using var viewModel = new CalendarEditorViewModel(
+            new DateOnly(2026, 7, 15), repository, ImmediateUpdate);
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        viewModel.Draft.Title = "새 일정";
+        viewModel.Draft.Notes = "중요 메모";
+        viewModel.Draft.TimeValue = new TimeSpan(12, 0, 0);
+        viewModel.Draft.Color = "#7A2432";
+        Assert(viewModel.SaveDraftAsync().GetAwaiter().GetResult() &&
+               repository.UpsertCount == 1 && viewModel.Items.Count == 1,
+            "새 일정을 정확히 한 번 저장하지 못했습니다.");
+
+        CalendarItem item = viewModel.Items[0];
+        Assert(viewModel.BeginEdit(item), "기존 일정 편집을 시작하지 못했습니다.");
+        viewModel.Draft.Title = "수정 일정";
+        Assert(viewModel.SaveDraftAsync().GetAwaiter().GetResult() &&
+               repository.UpsertCount == 2 && viewModel.Items.Count == 1 &&
+               viewModel.Items[0].Title == "수정 일정",
+            "수정 저장이 일정을 중복 생성했습니다.");
+
+        item = viewModel.Items[0];
+        viewModel.BeginEdit(item);
+        viewModel.Draft.IsCompleted = true;
+        Assert(viewModel.SaveDraftAsync().GetAwaiter().GetResult() &&
+               viewModel.Items.Count == 1 && viewModel.Items[0].IsCompleted,
+            "완료 상태 저장이 일정을 중복 생성했습니다.");
+
+        Assert(viewModel.DeleteAsync(viewModel.Items[0])
+                   .GetAwaiter().GetResult() &&
+               repository.DeleteCount == 1 && viewModel.Items.Count == 0,
+            "삭제가 원본 일정 하나에 적용되지 않았습니다.");
+    }
+
+    private static void CalendarPreviewUsesItemColor()
+    {
+        var repository = new InMemoryCalendarRepository();
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "색상 일정",
+            StartDate = new DateOnly(2026, 7, 15),
+            EndDate = new DateOnly(2026, 7, 15),
+            Color = "#7A2432"
+        }).GetAwaiter().GetResult();
+        var viewModel = new CalendarViewModel(repository,
+            () => new DateTime(2026, 7, 14), ImmediateUpdate);
+        viewModel.InitializeAsync().GetAwaiter().GetResult();
+
+        CalendarTaskPreviewViewModel preview = viewModel.Days
+            .Single(day => day.Date == new DateOnly(2026, 7, 15))
+            .AllTasks.Single();
+        var brush = preview.TextBrush as Avalonia.Media.SolidColorBrush;
+        Assert(brush?.Color == Avalonia.Media.Color.Parse("#7A2432"),
+            "달력 미리보기에 일정 텍스트 색상이 반영되지 않았습니다.");
+    }
+
+    private static void ServerMergePreservesPendingLocalChanges() =>
+        WithTempDirectory(directory =>
+        {
+            using var repository = new LocalCalendarRepository(directory);
+            DateOnly date = new(2026, 7, 15);
+            var local = new CalendarItem
+            {
+                Title = "로컬 변경",
+                StartDate = date,
+                EndDate = date
+            };
+            repository.UpsertItemAsync(local).GetAwaiter().GetResult();
+            CalendarItem pending = repository.GetAllItemsAsync()
+                .GetAwaiter().GetResult().Single();
+            var uploaded = new CalendarItem
+            {
+                Id = local.Id,
+                Title = "서버 반영",
+                StartDate = date,
+                EndDate = date,
+                Revision = 2,
+                Cursor = 10,
+                UpdatedAt = pending.UpdatedAt.AddSeconds(1)
+            };
+
+            repository.ApplyServerAsync([uploaded], [])
+                .GetAwaiter().GetResult();
+            Assert(repository.GetAllItemsAsync().GetAwaiter().GetResult()
+                       .Single().Title == "로컬 변경",
+                "전송 전 로컬 변경을 서버 변경으로 덮어썼습니다.");
+
+            repository.MarkItemUploadedAsync(uploaded, pending.UpdatedAt)
+                .GetAwaiter().GetResult();
+            CalendarItem synchronized = repository.GetAllItemsAsync()
+                .GetAwaiter().GetResult().Single();
+            Assert(synchronized.Title == "서버 반영" &&
+                   synchronized.Revision == 2 && synchronized.Cursor == 10,
+                "업로드 확인 결과를 로컬 일정에 반영하지 못했습니다.");
+
+            uploaded.Title = "다른 환경 변경";
+            uploaded.Revision = 3;
+            uploaded.Cursor = 11;
+            repository.ApplyServerAsync([uploaded], [])
+                .GetAwaiter().GetResult();
+            Assert(repository.GetAllItemsAsync().GetAwaiter().GetResult()
+                       .Single().Title == "다른 환경 변경",
+                "동기화된 일정에 최신 서버 변경을 반영하지 못했습니다.");
+        });
+
+    private static void CalendarScopesStayIsolated() =>
+        WithTempDirectory(directory =>
+        {
+            string root = Path.Combine(directory, "root");
+            string accounts = Path.Combine(directory, "accounts");
+            var local = new LocalCalendarRepository(root);
+            local.UpsertItemAsync(new CalendarItem
+            {
+                Title = "익명 일정",
+                StartDate = new DateOnly(2026, 7, 15),
+                EndDate = new DateOnly(2026, 7, 15)
+            }).GetAwaiter().GetResult();
+            using var session = new AuthSession("http://127.0.0.1:3000");
+            using var syncing = new SyncingCalendarRepository(local,
+                new RemoteCalendarRepository(session), session, accounts);
+
+            syncing.SwitchScopeAsync(null).GetAwaiter().GetResult();
+            Assert(syncing.GetItemsByRangeAsync(DateOnly.MinValue,
+                       DateOnly.MaxValue).GetAwaiter().GetResult().Count == 1,
+                "최초 익명 범위에 기존 로컬 데이터를 옮기지 못했습니다.");
+            syncing.SwitchScopeAsync(Guid.Parse(
+                "00000000-0000-0000-0000-000000000001"))
+                .GetAwaiter().GetResult();
+            Assert(syncing.GetItemsByRangeAsync(DateOnly.MinValue,
+                       DateOnly.MaxValue).GetAwaiter().GetResult().Count == 1,
+                "최초 로그인 계정에 익명 일정을 가져오지 못했습니다.");
+            syncing.SwitchScopeAsync(Guid.Parse(
+                "00000000-0000-0000-0000-000000000002"))
+                .GetAwaiter().GetResult();
+            Assert(syncing.GetItemsByRangeAsync(DateOnly.MinValue,
+                       DateOnly.MaxValue).GetAwaiter().GetResult().Count == 0,
+                "서로 다른 로그인 계정 사이에 일정이 섞였습니다.");
+        });
+
+    private static void RemoteCalendarClientUsesV2Contract()
+    {
+        var requests = new List<string>();
+        var handler = new RecordingHttpMessageHandler(async (request,
+            cancellationToken) =>
+        {
+            Assert(request.Headers.Authorization?.Scheme == "Bearer" &&
+                   request.Headers.Authorization.Parameter == "access-token",
+                "v2 원격 요청에 접근 토큰을 넣지 않았습니다.");
+            requests.Add($"{request.Method} {request.RequestUri?.PathAndQuery} " +
+                (request.Content is null ? string.Empty :
+                    await request.Content.ReadAsStringAsync(cancellationToken)));
+            string json = request.Method == HttpMethod.Put
+                ? """
+                  {"id":"00000000-0000-0000-0000-000000000010",
+                   "kind":"schedule","title":"원격 일정","notes":"메모",
+                   "startDate":"2026-07-15","endDate":"2026-07-15",
+                   "startTime":"09:30","endTime":null,"allDay":false,
+                   "completed":false,"color":"#0041E6","recurrence":null,
+                   "reminders":[],"deleted":false,"revision":2,"cursor":6,
+                   "updatedAt":"2026-07-15T00:00:00Z"}
+                  """
+                : """
+                  {"changes":[
+                    {"entityType":"calendarItem","cursor":7,"payload":{
+                      "id":"00000000-0000-0000-0000-000000000010",
+                      "kind":"schedule","title":"다른 환경 일정","notes":"",
+                      "startDate":"2026-07-16","endDate":"2026-07-16",
+                      "startTime":null,"endTime":null,"allDay":true,
+                      "completed":false,"color":"#141A24","recurrence":null,
+                      "reminders":[],"deleted":false,"revision":3,
+                      "updatedAt":"2026-07-15T01:00:00Z"}},
+                    {"entityType":"dateCellDecoration","cursor":8,"payload":{
+                      "id":"00000000-0000-0000-0000-000000000020",
+                      "date":"2026-07-16","kind":"colorDot","color":"#FF0000",
+                      "label":"휴일","deleted":false,"revision":1,
+                      "updatedAt":"2026-07-15T01:00:00Z"}}],
+                   "nextCursor":8,"hasMore":false}
+                  """;
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8,
+                    "application/json")
+            };
+        });
+        using var remote = new RemoteCalendarRepository(
+            _ => Task.FromResult<string?>("access-token"),
+            "http://calendar.test", handler);
+        DateOnly date = new(2026, 7, 15);
+        CalendarItem uploaded = remote.UpsertItemAsync(new CalendarItem
+        {
+            Id = Guid.Parse("00000000-0000-0000-0000-000000000010"),
+            Title = "원격 일정",
+            Notes = "메모",
+            StartDate = date,
+            EndDate = date,
+            StartTime = new TimeOnly(9, 30),
+            Color = "#0041E6"
+        }).GetAwaiter().GetResult();
+        Assert(uploaded.Revision == 2 && uploaded.Cursor == 6 &&
+               uploaded.StartTime == new TimeOnly(9, 30),
+            "v2 일정 저장 응답을 CalendarItem으로 변환하지 못했습니다.");
+
+        CalendarSyncPage page = remote.PullAsync(6).GetAwaiter().GetResult();
+        Assert(page.NextCursor == 8 && page.Items.Single().Title ==
+               "다른 환경 일정" && page.Items.Single().Cursor == 7 &&
+               page.Decorations.Single().Cursor == 8,
+            "v2 통합 커서 응답을 일정과 날짜 장식으로 분리하지 못했습니다.");
+        Assert(requests[0].StartsWith("PUT /v2/calendar-items/") &&
+               requests[0].Contains("\"color\":\"#0041E6\"") &&
+               requests[1] == "GET /v2/sync?after=6&limit=500 ",
+            "v2 원격 요청 경로나 일정 payload가 잘못되었습니다.");
+    }
+
+    private static Task ImmediateUpdate(Action update)
+    {
+        update();
+        return Task.CompletedTask;
+    }
+
     private static void WithTempDirectory(Action<string> action)
     {
         string directory = Path.Combine(Path.GetTempPath(),
@@ -500,8 +862,8 @@ internal static class Program
             "로그아웃 상태가 로컬 전용으로 표시되지 않았습니다.");
 
         viewModel.SetSynchronizationAvailability(true);
-        viewModel.ApplySynchronizationState(new TodoSynchronizationState(
-            TodoSynchronizationStatus.InProgress,
+        viewModel.ApplySynchronizationState(new CalendarSynchronizationState(
+            CalendarSynchronizationStatus.InProgress,
             new DateTimeOffset(2026, 7, 14, 9, 0, 0, TimeSpan.Zero)));
         Assert(viewModel.IsSynchronizing &&
                viewModel.SynchronizationStatus == "동기화 중…",
@@ -509,14 +871,14 @@ internal static class Program
 
         var succeededAt = new DateTimeOffset(2026, 7, 14, 12, 34, 0,
             TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 7, 14)));
-        viewModel.ApplySynchronizationState(new TodoSynchronizationState(
-            TodoSynchronizationStatus.Succeeded, succeededAt));
+        viewModel.ApplySynchronizationState(new CalendarSynchronizationState(
+            CalendarSynchronizationStatus.Succeeded, succeededAt));
         Assert(!viewModel.IsSynchronizing &&
                viewModel.SynchronizationStatus.Contains("마지막 성공 12:34"),
             "마지막 성공 시각이 표시되지 않았습니다.");
 
-        viewModel.ApplySynchronizationState(new TodoSynchronizationState(
-            TodoSynchronizationStatus.Failed, succeededAt.AddMinutes(2),
+        viewModel.ApplySynchronizationState(new CalendarSynchronizationState(
+            CalendarSynchronizationStatus.Failed, succeededAt.AddMinutes(2),
             "network"));
         Assert(viewModel.IsSynchronizationFailed &&
                viewModel.SynchronizationStatus.Contains("동기화 실패") &&
@@ -530,7 +892,7 @@ internal static class Program
     }
 
     private static CalendarViewModel CreateCalendarViewModel() => new(
-        new EmptyTodoRepository(),
+        new InMemoryCalendarRepository(),
         () => new DateTime(2026, 7, 14),
         update =>
         {
@@ -836,27 +1198,91 @@ internal static class Program
     }
 }
 
-internal sealed class EmptyTodoRepository : ITodoRepository
+internal sealed class InMemoryCalendarRepository : ICalendarRepository
 {
-    public event EventHandler? Changed
+    private readonly List<CalendarItem> _items = [];
+    private readonly List<DateCellDecoration> _decorations = [];
+    private SyncState _syncState = new(0);
+    public event EventHandler? Changed;
+    public int UpsertCount { get; private set; }
+    public int DeleteCount { get; private set; }
+
+    public Task<IReadOnlyList<CalendarItem>> GetItemsByRangeAsync(DateOnly from,
+        DateOnly to, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<CalendarItem>>(_items.Where(item =>
+            !item.IsDeleted && item.StartDate <= to &&
+            (item.Recurrence is not null || item.EndDate >= from)).ToArray());
+
+    public Task<IReadOnlyList<CalendarOccurrence>> GetOccurrencesByRangeAsync(
+        DateOnly from,
+        DateOnly to, CancellationToken cancellationToken = default) =>
+        Task.FromResult(CalendarOccurrenceEngine.GetOccurrences(_items,
+            from, to));
+
+    public Task<IReadOnlyList<DateCellDecoration>> GetDecorationsByRangeAsync(
+        DateOnly from, DateOnly to,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<DateCellDecoration>>(_decorations
+            .Where(item => !item.IsDeleted && item.Date >= from &&
+                item.Date <= to).ToArray());
+
+    public Task UpsertItemAsync(CalendarItem item,
+        CancellationToken cancellationToken = default)
     {
-        add { }
-        remove { }
+        int index = _items.FindIndex(current => current.Id == item.Id);
+        if (index < 0) _items.Add(item);
+        else _items[index] = item;
+        UpsertCount++;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<TodoItem>> GetByDateAsync(DateOnly date,
+    public Task DeleteItemAsync(Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        _items.RemoveAll(item => item.Id == id);
+        DeleteCount++;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    public Task UpsertDecorationAsync(DateCellDecoration item,
+        CancellationToken cancellationToken = default)
+    {
+        int index = _decorations.FindIndex(current => current.Id == item.Id);
+        if (index < 0) _decorations.Add(item);
+        else _decorations[index] = item;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteDecorationAsync(Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        _decorations.RemoveAll(item => item.Id == id);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    public Task<SyncState> GetSyncStateAsync(
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<TodoItem>>([]);
+        Task.FromResult(_syncState);
 
-    public Task<IReadOnlyList<TodoItem>> GetByRangeAsync(DateOnly from,
-        DateOnly to, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<TodoItem>>([]);
+    public Task SetSyncStateAsync(SyncState state,
+        CancellationToken cancellationToken = default)
+    {
+        _syncState = state;
+        return Task.CompletedTask;
+    }
+}
 
-    public Task UpsertAsync(TodoItem item,
-        CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-    public Task DeleteAsync(Guid id,
-        CancellationToken cancellationToken = default) => Task.CompletedTask;
+internal sealed class RecordingHttpMessageHandler(
+    Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)
+    : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken) =>
+        send(request, cancellationToken);
 }
 
 internal readonly record struct NativePositionCall(IntPtr Window,

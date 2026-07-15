@@ -58,6 +58,14 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
         return CalendarOccurrenceEngine.GetOccurrences(document.Items, from, to);
     }
 
+    public async Task<IReadOnlyList<CalendarItem>> GetAllItemsAsync(
+        CancellationToken cancellationToken = default) =>
+        (await ReadAsync(cancellationToken)).Items.Select(Clone).ToArray();
+
+    public async Task<IReadOnlyList<DateCellDecoration>> GetAllDecorationsAsync(
+        CancellationToken cancellationToken = default) =>
+        (await ReadAsync(cancellationToken)).Decorations.Select(Clone).ToArray();
+
     public async Task<IReadOnlyList<DateCellDecoration>>
         GetDecorationsByRangeAsync(DateOnly from, DateOnly to,
             CancellationToken cancellationToken = default)
@@ -77,6 +85,10 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentException.ThrowIfNullOrWhiteSpace(item.Title);
+        TextColorValidation color = CalendarTextColor.Validate(item.Color);
+        if (!color.IsValid) throw new ArgumentException(color.Message,
+            nameof(item));
+        item.Color = color.NormalizedColor;
         CalendarOccurrenceEngine.ValidateItem(item);
         if (item.Reminders.Any(reminder => reminder.MinutesBefore < 0))
             throw new ArgumentException("알림 시간은 음수일 수 없습니다.", nameof(item));
@@ -146,6 +158,78 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
             cancellationToken);
     }
 
+    public Task SeedAsync(IEnumerable<CalendarItem> items,
+        IEnumerable<DateCellDecoration> decorations,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(decorations);
+        return MutateAsync(document =>
+        {
+            if (document.Items.Count == 0)
+                document.Items.AddRange(items.Where(item => !item.IsDeleted)
+                    .Select(CloneAsLocalChange));
+            if (document.Decorations.Count == 0)
+                document.Decorations.AddRange(decorations
+                    .Where(item => !item.IsDeleted)
+                    .Select(CloneAsLocalChange));
+        }, cancellationToken);
+    }
+
+    public Task ApplyServerAsync(IEnumerable<CalendarItem> items,
+        IEnumerable<DateCellDecoration> decorations,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(decorations);
+        return MutateAsync(document =>
+        {
+            foreach (CalendarItem change in items)
+                MergeServerItem(document.Items, change);
+            foreach (DateCellDecoration change in decorations)
+                MergeServerDecoration(document.Decorations, change);
+        }, cancellationToken);
+    }
+
+    public Task MarkItemUploadedAsync(CalendarItem serverItem,
+        DateTimeOffset expectedUpdatedAt,
+        CancellationToken cancellationToken = default) =>
+        MutateAsync(document =>
+        {
+            int index = document.Items.FindIndex(item => item.Id == serverItem.Id);
+            if (index < 0 || document.Items[index].Revision != 0 ||
+                document.Items[index].UpdatedAt != expectedUpdatedAt)
+                return;
+            document.Items[index] = Clone(serverItem);
+        }, cancellationToken);
+
+    public Task MarkItemDeletedSynchronizedAsync(Guid id,
+        DateTimeOffset expectedUpdatedAt,
+        CancellationToken cancellationToken = default) =>
+        MutateAsync(document => document.Items.RemoveAll(item =>
+            item.Id == id && item.IsDeleted && item.Revision == 0 &&
+            item.UpdatedAt == expectedUpdatedAt), cancellationToken);
+
+    public Task MarkDecorationUploadedAsync(DateCellDecoration serverItem,
+        DateTimeOffset expectedUpdatedAt,
+        CancellationToken cancellationToken = default) =>
+        MutateAsync(document =>
+        {
+            int index = document.Decorations.FindIndex(
+                item => item.Id == serverItem.Id);
+            if (index < 0 || document.Decorations[index].Revision != 0 ||
+                document.Decorations[index].UpdatedAt != expectedUpdatedAt)
+                return;
+            document.Decorations[index] = Clone(serverItem);
+        }, cancellationToken);
+
+    public Task MarkDecorationDeletedSynchronizedAsync(Guid id,
+        DateTimeOffset expectedUpdatedAt,
+        CancellationToken cancellationToken = default) =>
+        MutateAsync(document => document.Decorations.RemoveAll(item =>
+            item.Id == id && item.IsDeleted && item.Revision == 0 &&
+            item.UpdatedAt == expectedUpdatedAt), cancellationToken);
+
     private async Task<CalendarDocument> ReadAsync(
         CancellationToken cancellationToken)
     {
@@ -182,6 +266,8 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
             if (document.Version != CurrentDocumentVersion)
                 throw new InvalidDataException(
                     $"지원하지 않는 캘린더 문서 버전입니다: {document.Version}");
+            foreach (CalendarItem item in document.Items)
+                item.Color = CalendarTextColor.NormalizeLegacyDefault(item.Color);
             return document;
         }
 
@@ -274,6 +360,47 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
         Cursor = item.Cursor,
         UpdatedAt = item.UpdatedAt
     };
+
+    private static CalendarItem CloneAsLocalChange(CalendarItem item)
+    {
+        CalendarItem clone = Clone(item);
+        clone.IsDeleted = false;
+        clone.Revision = 0;
+        clone.Cursor = 0;
+        clone.UpdatedAt = DateTimeOffset.UtcNow;
+        return clone;
+    }
+
+    private static DateCellDecoration CloneAsLocalChange(
+        DateCellDecoration item)
+    {
+        DateCellDecoration clone = Clone(item);
+        clone.IsDeleted = false;
+        clone.Revision = 0;
+        clone.Cursor = 0;
+        clone.UpdatedAt = DateTimeOffset.UtcNow;
+        return clone;
+    }
+
+    private static void MergeServerItem(List<CalendarItem> items,
+        CalendarItem change)
+    {
+        int index = items.FindIndex(item => item.Id == change.Id);
+        if (index < 0) items.Add(Clone(change));
+        else if (items[index].Revision != 0 &&
+                 change.Revision >= items[index].Revision)
+            items[index] = Clone(change);
+    }
+
+    private static void MergeServerDecoration(List<DateCellDecoration> items,
+        DateCellDecoration change)
+    {
+        int index = items.FindIndex(item => item.Id == change.Id);
+        if (index < 0) items.Add(Clone(change));
+        else if (items[index].Revision != 0 &&
+                 change.Revision >= items[index].Revision)
+            items[index] = Clone(change);
+    }
 
     private static DateCellDecoration Clone(DateCellDecoration item) => new()
     {

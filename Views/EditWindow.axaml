@@ -1,42 +1,207 @@
-<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- x:Class="HmDesktopCalendar.Views.EditWindow" x:CompileBindings="False" Width="700" Height="620"
- MinWidth="580" MinHeight="500" Title="할 일 편집" WindowStartupLocation="CenterScreen" Topmost="True">
- <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
-  <TextBlock Text="{Binding DateTitle}" FontSize="24" FontWeight="SemiBold"/>
-  <TextBox x:Name="NewTitle" Grid.Row="1" Margin="0,16,0,8"
-           PlaceholderText="새 할 일 제목" HorizontalAlignment="Stretch"/>
-  <Grid Grid.Row="2" ColumnDefinitions="Auto,260,*,Auto">
-   <TextBlock Text="시간" VerticalAlignment="Center" Margin="0,0,10,0"/>
-   <TimePicker x:Name="NewTime" Grid.Column="1" ClockIdentifier="24HourClock"
-               MinuteIncrement="1" HorizontalAlignment="Stretch"/>
-   <Button Grid.Column="3" Content="할 일 추가" Click="Add_OnClick"
-           MinWidth="92" Margin="12,0,0,0"/>
-  </Grid>
-  <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,8,0,14">
-    <Button Content="시간 없음" Tag="none" Click="PresetTime_OnClick"/><Button Content="지금" Tag="now" Click="PresetTime_OnClick"/>
-    <Button Content="오전 9시" Tag="09:00" Click="PresetTime_OnClick"/><Button Content="정오" Tag="12:00" Click="PresetTime_OnClick"/>
-    <Button Content="오후 6시" Tag="18:00" Click="PresetTime_OnClick"/>
-  </StackPanel>
-  <ListBox Grid.Row="4" ItemsSource="{Binding Items}">
-   <ListBox.ItemTemplate><DataTemplate>
-   <Border Padding="12" Margin="0,3" Background="#10000000" CornerRadius="8">
-    <Grid ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
-     <CheckBox IsChecked="{Binding IsCompleted}" Click="Complete_OnClick"
-               VerticalAlignment="Center" Margin="0,0,10,0"/>
-     <TextBox Grid.Column="1" Text="{Binding Title}" HorizontalAlignment="Stretch"/>
-     <Button Grid.Column="2" Content="저장" Click="Save_OnClick" MinWidth="64" Margin="10,0,6,0"/>
-     <Button Grid.Column="3" Content="삭제" Click="Delete_OnClick" MinWidth="64"/>
-     <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
-                 Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
-      <TextBlock Text="시간" VerticalAlignment="Center"/>
-      <TimePicker SelectedTime="{Binding TimeValue}" ClockIdentifier="24HourClock"
-                  MinuteIncrement="1" Width="260"/>
-     </StackPanel>
-     <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding Notes}"
-              PlaceholderText="메모" AcceptsReturn="True" MinHeight="54" Margin="0,8,0,0"/>
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HmDesktopCalendar.Views.EditWindow"
+        x:CompileBindings="False"
+        Classes="dialog"
+        Width="820" Height="700" MinWidth="640" MinHeight="560"
+        Title="일정 편집" WindowStartupLocation="CenterScreen"
+        Topmost="True">
+  <Grid Margin="24" RowDefinitions="Auto,16,*,Auto">
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="4">
+        <TextBlock Text="{Binding DateTitle}" Classes="title" />
+        <TextBlock Text="일정을 선택해 수정하거나 새 일정을 추가하세요."
+                   Classes="caption" />
+      </StackPanel>
+      <Button Grid.Column="1" Content="＋ 새 일정" Classes="secondary"
+              Click="New_OnClick" />
     </Grid>
-   </Border>
-  </DataTemplate></ListBox.ItemTemplate></ListBox>
-  <TextBlock Grid.Row="5" Text="{Binding ErrorMessage}" Foreground="#C03030" Margin="0,10,0,0"/>
- </Grid>
+
+    <Grid Grid.Row="2" ColumnDefinitions="280,16,*">
+      <Border Classes="card" Padding="16">
+        <Grid RowDefinitions="Auto,12,*">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="일정 목록" FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+            <Border Grid.Column="1" Background="{DynamicResource SocarSurfaceMutedBrush}"
+                    CornerRadius="10" Padding="8,2">
+              <TextBlock Text="{Binding Items.Count, StringFormat={}{0}개}"
+                         Classes="caption" />
+            </Border>
+          </Grid>
+          <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Items}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,0,0,8" Padding="12"
+                          Background="{DynamicResource SocarSurfaceSubtleBrush}"
+                          BorderBrush="{DynamicResource SocarBorderBrush}"
+                          BorderThickness="1" CornerRadius="10">
+                    <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="4,8,*">
+                      <Border Background="{Binding Color}" CornerRadius="2"
+                              Grid.RowSpan="3" />
+                      <Grid Grid.Column="2" ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" />
+                        <CheckBox Grid.Column="1" IsChecked="{Binding IsCompleted}"
+                                  IsHitTestVisible="False" Focusable="False"
+                                  ToolTip.Tip="완료 상태" />
+                      </Grid>
+                      <StackPanel Grid.Row="1" Grid.Column="2"
+                                  Orientation="Horizontal" Spacing="8"
+                                  Margin="0,6,0,0">
+                        <TextBlock Text="{Binding StartTime}" Classes="caption" />
+                        <TextBlock Text="{Binding Notes}" Classes="caption"
+                                   MaxWidth="160" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <StackPanel Grid.Row="2" Grid.Column="2"
+                                  Orientation="Horizontal" Spacing="6"
+                                  Margin="0,10,0,0">
+                        <Button Content="수정" Classes="secondary"
+                                MinHeight="32" Padding="12,0"
+                                Click="Edit_OnClick" />
+                        <Button Content="삭제" Classes="ghost"
+                                MinHeight="32" Padding="12,0"
+                                Click="Delete_OnClick" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="2" Classes="card" Padding="20">
+        <ScrollViewer x:Name="EditorFormScroll"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="16">
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding Draft.FormTitle}" FontSize="18"
+                         FontWeight="SemiBold" />
+              <TextBlock Text="추가와 수정에 같은 입력 규칙을 사용합니다."
+                         Classes="caption" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="제목" FontWeight="SemiBold" />
+              <TextBox Text="{Binding Draft.Title, Mode=TwoWay,
+                                      UpdateSourceTrigger=PropertyChanged}"
+                       PlaceholderText="일정 제목을 입력하세요" MaxLength="500" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+              <TextBlock Text="시간" FontWeight="SemiBold" />
+              <TimePicker SelectedTime="{Binding Draft.TimeValue, Mode=TwoWay}"
+                          ClockIdentifier="24HourClock" MinuteIncrement="1"
+                          HorizontalAlignment="Stretch" />
+              <WrapPanel Orientation="Horizontal">
+                <Button Content="시간 없음" Tag="none" Classes="ghost"
+                        Margin="0,0,6,6" MinHeight="32" Padding="10,0"
+                        Click="PresetTime_OnClick" />
+                <Button Content="지금" Tag="now" Classes="ghost"
+                        Margin="0,0,6,6" MinHeight="32" Padding="10,0"
+                        Click="PresetTime_OnClick" />
+                <Button Content="오전 9시" Tag="09:00" Classes="ghost"
+                        Margin="0,0,6,6" MinHeight="32" Padding="10,0"
+                        Click="PresetTime_OnClick" />
+                <Button Content="정오" Tag="12:00" Classes="ghost"
+                        Margin="0,0,6,6" MinHeight="32" Padding="10,0"
+                        Click="PresetTime_OnClick" />
+                <Button Content="오후 6시" Tag="18:00" Classes="ghost"
+                        Margin="0,0,6,6" MinHeight="32" Padding="10,0"
+                        Click="PresetTime_OnClick" />
+              </WrapPanel>
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="메모" FontWeight="SemiBold" />
+              <TextBox Text="{Binding Draft.Notes, Mode=TwoWay,
+                                      UpdateSourceTrigger=PropertyChanged}"
+                       PlaceholderText="일정에 필요한 내용을 기록하세요"
+                       AcceptsReturn="True" TextWrapping="Wrap"
+                       MinHeight="96" MaxLength="10000" />
+            </StackPanel>
+
+            <CheckBox Content="완료된 일정" IsChecked="{Binding Draft.IsCompleted,
+                      Mode=TwoWay}" />
+
+            <StackPanel Spacing="8">
+              <TextBlock Text="텍스트 색상" FontWeight="SemiBold" />
+              <TextBlock Text="중립 일정 칩에서 읽기 쉬운 색상만 저장할 수 있습니다."
+                         Classes="caption" />
+              <WrapPanel Orientation="Horizontal">
+                <Button Tag="#141A24" Background="#141A24" Width="36"
+                        MinWidth="36" Height="36" MinHeight="36" Padding="0"
+                        Margin="0,0,8,0" ToolTip.Tip="차콜"
+                        AutomationProperties.Name="차콜 텍스트 색상"
+                        Click="PaletteColor_OnClick" />
+                <Button Tag="#354153" Background="#354153" Width="36"
+                        MinWidth="36" Height="36" MinHeight="36" Padding="0"
+                        Margin="0,0,8,0" ToolTip.Tip="슬레이트"
+                        AutomationProperties.Name="슬레이트 텍스트 색상"
+                        Click="PaletteColor_OnClick" />
+                <Button Tag="#0041E6" Background="#0041E6" Width="36"
+                        MinWidth="36" Height="36" MinHeight="36" Padding="0"
+                        Margin="0,0,8,0" ToolTip.Tip="쏘카 블루"
+                        AutomationProperties.Name="쏘카 블루 텍스트 색상"
+                        Click="PaletteColor_OnClick" />
+                <Button Tag="#0A1491" Background="#0A1491" Width="36"
+                        MinWidth="36" Height="36" MinHeight="36" Padding="0"
+                        Margin="0,0,8,0" ToolTip.Tip="네이비"
+                        AutomationProperties.Name="네이비 텍스트 색상"
+                        Click="PaletteColor_OnClick" />
+                <Button Tag="#7A2432" Background="#7A2432" Width="36"
+                        MinWidth="36" Height="36" MinHeight="36" Padding="0"
+                        Margin="0,0,8,0" ToolTip.Tip="버건디"
+                        AutomationProperties.Name="버건디 텍스트 색상"
+                        Click="PaletteColor_OnClick" />
+                <Button Tag="#2F6B3C" Background="#2F6B3C" Width="36"
+                        MinWidth="36" Height="36" MinHeight="36" Padding="0"
+                        ToolTip.Tip="포레스트"
+                        AutomationProperties.Name="포레스트 텍스트 색상"
+                        Click="PaletteColor_OnClick" />
+              </WrapPanel>
+              <TextBox Text="{Binding Draft.Color, Mode=TwoWay,
+                                      UpdateSourceTrigger=PropertyChanged}"
+                       PlaceholderText="#RRGGBB" MaxLength="7" />
+              <TextBlock Text="{Binding Draft.ContrastText}" Classes="caption" />
+            </StackPanel>
+
+            <Border Padding="12" Background="#F8F9FC"
+                    BorderBrush="{DynamicResource SocarBorderBrush}"
+                    BorderThickness="1" CornerRadius="8">
+              <Grid ColumnDefinitions="64,*">
+                <TextBlock Text="{Binding Draft.PreviewTime}" FontSize="12"
+                           Classes="schedule-time" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding Draft.PreviewTitle}"
+                           Foreground="{Binding Draft.PreviewBrush}"
+                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              </Grid>
+            </Border>
+
+            <TextBlock Text="{Binding Draft.ValidationMessage}"
+                       IsVisible="{Binding Draft.HasValidationError}"
+                       Classes="status-warning" TextWrapping="Wrap" />
+
+            <Grid ColumnDefinitions="*,Auto,8,Auto">
+              <TextBlock Text="저장되지 않은 변경이 있습니다."
+                         IsVisible="{Binding Draft.HasUnsavedChanges}"
+                         Classes="caption" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Content="취소" Classes="ghost"
+                      Click="Cancel_OnClick" />
+              <Button Grid.Column="3" Content="{Binding Draft.SaveButtonText}"
+                      Classes="primary" IsEnabled="{Binding Draft.CanSave}"
+                      Click="Save_OnClick" />
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+    <TextBlock Grid.Row="3" Text="{Binding ErrorMessage}"
+               Classes="status-warning" Margin="0,12,0,0"
+               TextWrapping="Wrap" />
+  </Grid>
 </Window>

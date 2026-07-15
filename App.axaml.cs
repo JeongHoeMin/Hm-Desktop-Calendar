@@ -9,9 +9,9 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using HmDesktopCalendar.Authentication;
+using HmDesktopCalendar.Calendar;
 using HmDesktopCalendar.DesktopIntegration;
 using HmDesktopCalendar.Services;
-using HmDesktopCalendar.Todos;
 using HmDesktopCalendar.ViewModels;
 using HmDesktopCalendar.Views;
 
@@ -20,7 +20,7 @@ namespace HmDesktopCalendar;
 public partial class App : Application
 {
     private readonly AuthSession _session;
-    private readonly SyncingTodoRepository _repository;
+    private readonly SyncingCalendarRepository _repository;
     private readonly RealtimeSyncClient _realtime;
     private readonly CalendarSettingsStore _settings = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -47,9 +47,9 @@ public partial class App : Application
         string serverUrl = Environment.GetEnvironmentVariable(
             "HM_CALENDAR_SERVER_URL") ?? "http://127.0.0.1:3000";
         _session = new AuthSession(serverUrl);
-        var local = new LocalTodoRepository();
-        _repository = new SyncingTodoRepository(local,
-            new RemoteTodoRepository(_session, serverUrl), _session);
+        var local = new LocalCalendarRepository();
+        _repository = new SyncingCalendarRepository(local,
+            new RemoteCalendarRepository(_session, serverUrl), _session);
         string realtimeUrl = serverUrl.Replace("http://", "ws://")
             .Replace("https://", "wss://").TrimEnd('/') + "/v1/realtime";
         _realtime = new RealtimeSyncClient(_session, realtimeUrl);
@@ -158,7 +158,7 @@ public partial class App : Application
             return;
         }
 
-        _editor = new EditWindow(new TodoEditorViewModel(date, _repository));
+        _editor = new EditWindow(new CalendarEditorViewModel(date, _repository));
         _editor.Closed += OnEditorClosed;
         _editor.Show();
         _editor.Activate();
@@ -245,7 +245,7 @@ public partial class App : Application
     }
 
     private void OnSynchronizationStateChanged(object? sender,
-        TodoSynchronizationState state) => Dispatcher.UIThread.Post(() =>
+        CalendarSynchronizationState state) => Dispatcher.UIThread.Post(() =>
         {
             if (_calendar is null) return;
             if (_session.IsLoggedIn)
@@ -341,7 +341,7 @@ public partial class App : Application
         await _repository.StopAsync();
         await WaitForBackgroundTasksAsync();
 
-        _editor?.Close();
+        _editor?.CloseWithoutConfirmation();
         _loginWindow?.Close();
         _interaction?.Dispose();
         _windowHost?.Dispose();

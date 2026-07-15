@@ -178,6 +178,16 @@
     <Setter Property="FontSize" Value="17" />
   </Style>
 
+  <Style Selector="Button.danger">
+    <Setter Property="Background" Value="{DynamicResource SocarDangerBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SocarDangerBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource SocarTextInverseBrush}" />
+  </Style>
+
+  <Style Selector="Button.danger:pointerover">
+    <Setter Property="Opacity" Value="0.88" />
+  </Style>
+
   <Style Selector="Button.header-selector">
     <Setter Property="MinWidth" Value="56" />
     <Setter Property="Padding" Value="8,0" />

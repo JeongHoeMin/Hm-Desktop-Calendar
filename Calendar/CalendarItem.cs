@@ -38,7 +38,7 @@ public sealed class CalendarItem
     public TimeOnly? EndTime { get; set; }
     public bool IsAllDay { get; set; }
     public bool IsCompleted { get; set; }
-    public string Color { get; set; } = "#3B82F6";
+    public string Color { get; set; } = CalendarTextColor.DefaultColor;
     public RecurrenceRule? Recurrence { get; set; }
     public List<CalendarReminder> Reminders { get; set; } = [];
     public bool IsDeleted { get; set; }

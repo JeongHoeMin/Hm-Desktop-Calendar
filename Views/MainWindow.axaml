@@ -83,6 +83,7 @@
                                    Classes="schedule-time" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="11"
                                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                   Foreground="{Binding TextBrush}"
                                    TextDecorations="{Binding TitleDecorations}"
                                    VerticalAlignment="Center"/>
                       </Grid>
