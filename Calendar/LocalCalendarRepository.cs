@@ -49,6 +49,15 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<CalendarOccurrence>>
+        GetOccurrencesByRangeAsync(DateOnly from, DateOnly to,
+            CancellationToken cancellationToken = default)
+    {
+        if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
+        CalendarDocument document = await ReadAsync(cancellationToken);
+        return CalendarOccurrenceEngine.GetOccurrences(document.Items, from, to);
+    }
+
     public async Task<IReadOnlyList<DateCellDecoration>>
         GetDecorationsByRangeAsync(DateOnly from, DateOnly to,
             CancellationToken cancellationToken = default)
@@ -68,11 +77,7 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentException.ThrowIfNullOrWhiteSpace(item.Title);
-        if (item.EndDate < item.StartDate)
-            throw new ArgumentException("종료 날짜는 시작 날짜보다 빠를 수 없습니다.",
-                nameof(item));
-        if (item.Recurrence is { Interval: < 1 })
-            throw new ArgumentException("반복 간격은 1 이상이어야 합니다.", nameof(item));
+        CalendarOccurrenceEngine.ValidateItem(item);
         if (item.Reminders.Any(reminder => reminder.MinutesBefore < 0))
             throw new ArgumentException("알림 시간은 음수일 수 없습니다.", nameof(item));
 

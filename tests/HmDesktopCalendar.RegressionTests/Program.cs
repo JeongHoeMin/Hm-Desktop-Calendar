@@ -34,7 +34,16 @@ internal static class Program
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
             ("로컬 캘린더 저장소는 계정 범위를 분리한다", CalendarAccountsAreIsolated),
-            ("일정과 날짜 장식은 tombstone과 커서를 보존한다", CalendarCrudPreservesSyncData)
+            ("일정과 날짜 장식은 tombstone과 커서를 보존한다", CalendarCrudPreservesSyncData),
+            ("단일·기간 일정은 조회 경계를 포함해 날짜를 만든다", PeriodOccurrencesRespectRange),
+            ("일일 반복은 간격과 포함 종료일을 지킨다", DailyOccurrencesRespectIntervalAndUntil),
+            ("주간 반복은 선택 요일과 주 간격을 지킨다", WeeklyOccurrencesRespectDaysAndInterval),
+            ("월간 반복은 존재하지 않는 월말을 건너뛴다", MonthlyOccurrencesSkipMissingMonthDays),
+            ("연간 2월 29일 반복은 윤년에만 발생한다", YearlyOccurrencesUseLeapYears),
+            ("무기한 반복은 조회 범위 안에서만 계산한다", UnboundedOccurrencesStayBounded),
+            ("비지원 반복 규칙을 명시적으로 거부한다", UnsupportedRecurrencesAreRejected),
+            ("발생 일정 변경은 전체 시리즈 원본에 적용된다", OccurrenceChangesApplyToWholeSeries),
+            ("발생 일정 조회는 결정론적으로 정렬된다", OccurrencesAreDeterministicallyOrdered)
         };
         int failures = 0;
         foreach (var test in tests)
@@ -146,7 +155,7 @@ internal static class Program
             {
                 Title = "반복 일정",
                 StartDate = new DateOnly(2026, 7, 15),
-                EndDate = new DateOnly(2026, 7, 16),
+                EndDate = new DateOnly(2026, 7, 15),
                 Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly,
                     2, [DayOfWeek.Wednesday]),
                 Reminders = [new CalendarReminder(30)]
@@ -184,6 +193,268 @@ internal static class Program
                        .GetProperty("IsDeleted").GetBoolean(),
                 "날짜 장식 삭제 tombstone이 저장되지 않았습니다.");
         });
+
+    private static void PeriodOccurrencesRespectRange()
+    {
+        DateOnly singleDate = new(2026, 7, 3);
+        var single = new CalendarItem
+        {
+            Title = "하루 일정",
+            StartDate = singleDate,
+            EndDate = singleDate
+        };
+        var item = new CalendarItem
+        {
+            Title = "휴가",
+            StartDate = new DateOnly(2026, 6, 29),
+            EndDate = new DateOnly(2026, 7, 2)
+        };
+
+        IReadOnlyList<CalendarOccurrence> occurrences =
+            CalendarOccurrenceEngine.GetOccurrences(item,
+                new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 3));
+
+        AssertOccurrenceDates(CalendarOccurrenceEngine.GetOccurrences(single,
+            new DateOnly(2026, 7, 1), singleDate), singleDate);
+        AssertOccurrenceDates(occurrences,
+            new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 2));
+    }
+
+    private static void DailyOccurrencesRespectIntervalAndUntil()
+    {
+        var item = new CalendarItem
+        {
+            Title = "격일 일정",
+            StartDate = new DateOnly(2026, 7, 1),
+            EndDate = new DateOnly(2026, 7, 1),
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Daily, 2,
+                Until: new DateOnly(2026, 7, 7))
+        };
+
+        IReadOnlyList<CalendarOccurrence> occurrences =
+            CalendarOccurrenceEngine.GetOccurrences(item,
+                new DateOnly(2026, 6, 30), new DateOnly(2026, 7, 10));
+
+        AssertOccurrenceDates(occurrences,
+            new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 3),
+            new DateOnly(2026, 7, 5), new DateOnly(2026, 7, 7));
+    }
+
+    private static void WeeklyOccurrencesRespectDaysAndInterval()
+    {
+        var item = new CalendarItem
+        {
+            Title = "격주 일정",
+            StartDate = new DateOnly(2026, 7, 1),
+            EndDate = new DateOnly(2026, 7, 1),
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly, 2,
+                [DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday])
+        };
+
+        IReadOnlyList<CalendarOccurrence> occurrences =
+            CalendarOccurrenceEngine.GetOccurrences(item,
+                new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 17));
+
+        AssertOccurrenceDates(occurrences,
+            new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 3),
+            new DateOnly(2026, 7, 13), new DateOnly(2026, 7, 15),
+            new DateOnly(2026, 7, 17));
+    }
+
+    private static void MonthlyOccurrencesSkipMissingMonthDays()
+    {
+        var item = new CalendarItem
+        {
+            Title = "월말 일정",
+            StartDate = new DateOnly(2024, 1, 31),
+            EndDate = new DateOnly(2024, 1, 31),
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Monthly,
+                Until: new DateOnly(2024, 5, 31))
+        };
+
+        IReadOnlyList<CalendarOccurrence> occurrences =
+            CalendarOccurrenceEngine.GetOccurrences(item,
+                new DateOnly(2024, 1, 1), new DateOnly(2024, 5, 31));
+
+        AssertOccurrenceDates(occurrences,
+            new DateOnly(2024, 1, 31), new DateOnly(2024, 3, 31),
+            new DateOnly(2024, 5, 31));
+    }
+
+    private static void YearlyOccurrencesUseLeapYears()
+    {
+        var item = new CalendarItem
+        {
+            Title = "윤년 일정",
+            StartDate = new DateOnly(2024, 2, 29),
+            EndDate = new DateOnly(2024, 2, 29),
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Yearly,
+                Until: new DateOnly(2033, 2, 28))
+        };
+
+        IReadOnlyList<CalendarOccurrence> occurrences =
+            CalendarOccurrenceEngine.GetOccurrences(item,
+                new DateOnly(2024, 1, 1), new DateOnly(2033, 12, 31));
+
+        AssertOccurrenceDates(occurrences,
+            new DateOnly(2024, 2, 29), new DateOnly(2028, 2, 29),
+            new DateOnly(2032, 2, 29));
+    }
+
+    private static void UnboundedOccurrencesStayBounded()
+    {
+        var item = new CalendarItem
+        {
+            Title = "무기한 일정",
+            StartDate = new DateOnly(2000, 1, 1),
+            EndDate = new DateOnly(2000, 1, 1),
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Daily)
+        };
+
+        IReadOnlyList<CalendarOccurrence> occurrences =
+            CalendarOccurrenceEngine.GetOccurrences(item,
+                new DateOnly(2026, 7, 10), new DateOnly(2026, 7, 12));
+
+        AssertOccurrenceDates(occurrences,
+            new DateOnly(2026, 7, 10), new DateOnly(2026, 7, 11),
+            new DateOnly(2026, 7, 12));
+    }
+
+    private static void UnsupportedRecurrencesAreRejected()
+    {
+        AssertThrows<ArgumentException>(() =>
+            CalendarOccurrenceEngine.GetOccurrences(new CalendarItem
+            {
+                Title = "기간 반복",
+                StartDate = new DateOnly(2026, 7, 1),
+                EndDate = new DateOnly(2026, 7, 2),
+                Recurrence = new RecurrenceRule(RecurrenceFrequency.Daily)
+            }, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31)),
+            "기간과 반복의 결합을 허용했습니다.");
+
+        AssertThrows<ArgumentException>(() =>
+            CalendarOccurrenceEngine.GetOccurrences(new CalendarItem
+            {
+                Title = "횟수 반복",
+                StartDate = new DateOnly(2026, 7, 1),
+                EndDate = new DateOnly(2026, 7, 1),
+                Recurrence = new RecurrenceRule(RecurrenceFrequency.Daily,
+                    Count: 3)
+            }, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31)),
+            "반복 횟수를 허용했습니다.");
+
+        AssertThrows<ArgumentException>(() =>
+            CalendarOccurrenceEngine.GetOccurrences(new CalendarItem
+            {
+                Title = "요일 없는 주간 반복",
+                StartDate = new DateOnly(2026, 7, 1),
+                EndDate = new DateOnly(2026, 7, 1),
+                Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly)
+            }, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31)),
+            "요일이 없는 주간 반복을 허용했습니다.");
+    }
+
+    private static void OccurrenceChangesApplyToWholeSeries() =>
+        WithTempDirectory(directory =>
+        {
+            using var repository = new LocalCalendarRepository(directory);
+            var item = new CalendarItem
+            {
+                Title = "전체 시리즈",
+                StartDate = new DateOnly(2026, 7, 1),
+                EndDate = new DateOnly(2026, 7, 1),
+                Recurrence = new RecurrenceRule(RecurrenceFrequency.Daily,
+                    Until: new DateOnly(2026, 7, 3))
+            };
+            repository.UpsertItemAsync(item).GetAwaiter().GetResult();
+
+            IReadOnlyList<CalendarOccurrence> original = repository
+                .GetOccurrencesByRangeAsync(new DateOnly(2026, 7, 1),
+                    new DateOnly(2026, 7, 3)).GetAwaiter().GetResult();
+            Assert(original.Count == 3 &&
+                   original.All(occurrence => occurrence.SeriesId == item.Id),
+                "발생 일정이 원본 시리즈 ID를 보존하지 않았습니다.");
+
+            CalendarItem editedSeries = original[1].Item;
+            editedSeries.Title = "수정된 시리즈";
+            editedSeries.IsCompleted = true;
+            repository.UpsertItemAsync(editedSeries).GetAwaiter().GetResult();
+            IReadOnlyList<CalendarOccurrence> edited = repository
+                .GetOccurrencesByRangeAsync(new DateOnly(2026, 7, 1),
+                    new DateOnly(2026, 7, 3)).GetAwaiter().GetResult();
+            Assert(edited.Count == 3 && edited.All(occurrence =>
+                    occurrence.Item.Title == "수정된 시리즈" &&
+                    occurrence.Item.IsCompleted),
+                "수정과 완료가 전체 시리즈에 적용되지 않았습니다.");
+
+            repository.DeleteItemAsync(edited[0].SeriesId)
+                .GetAwaiter().GetResult();
+            Assert(repository.GetOccurrencesByRangeAsync(
+                       new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 3))
+                       .GetAwaiter().GetResult().Count == 0,
+                "삭제가 전체 시리즈에 적용되지 않았습니다.");
+        });
+
+    private static void OccurrencesAreDeterministicallyOrdered()
+    {
+        DateOnly date = new(2026, 7, 15);
+        var items = new[]
+        {
+            new CalendarItem
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000003"),
+                Title = "완료",
+                StartDate = date,
+                EndDate = date,
+                StartTime = new TimeOnly(8, 0),
+                IsCompleted = true
+            },
+            new CalendarItem
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+                Title = "나중",
+                StartDate = date,
+                EndDate = date,
+                StartTime = new TimeOnly(10, 0)
+            },
+            new CalendarItem
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+                Title = "먼저",
+                StartDate = date,
+                EndDate = date,
+                StartTime = new TimeOnly(9, 0)
+            }
+        };
+
+        IReadOnlyList<CalendarOccurrence> first =
+            CalendarOccurrenceEngine.GetOccurrences(items, date, date);
+        IReadOnlyList<CalendarOccurrence> second =
+            CalendarOccurrenceEngine.GetOccurrences(items.Reverse(), date, date);
+        Guid[] expectedOrder = [items[2].Id, items[1].Id, items[0].Id];
+
+        Assert(first.Select(occurrence => occurrence.SeriesId)
+                   .SequenceEqual(expectedOrder) &&
+               second.Select(occurrence => occurrence.SeriesId)
+                   .SequenceEqual(expectedOrder),
+            "입력 순서에 따라 발생 일정 정렬 결과가 달라졌습니다.");
+    }
+
+    private static void AssertOccurrenceDates(
+        IReadOnlyList<CalendarOccurrence> occurrences,
+        params DateOnly[] expected) => Assert(
+        occurrences.Select(occurrence => occurrence.Date)
+            .SequenceEqual(expected),
+        $"발생 날짜가 다릅니다. 실제: {string.Join(", ", occurrences.Select(
+            occurrence => occurrence.Date))}");
+
+    private static void AssertThrows<TException>(Action action, string message)
+        where TException : Exception
+    {
+        try { action(); }
+        catch (TException) { return; }
+        throw new InvalidOperationException(message);
+    }
 
     private static void WithTempDirectory(Action<string> action)
     {

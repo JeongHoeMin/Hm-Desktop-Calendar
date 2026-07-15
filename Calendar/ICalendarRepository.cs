@@ -13,6 +13,9 @@ public interface ICalendarRepository
 
     Task<IReadOnlyList<CalendarItem>> GetItemsByRangeAsync(DateOnly from,
         DateOnly to, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CalendarOccurrence>> GetOccurrencesByRangeAsync(
+        DateOnly from, DateOnly to,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DateCellDecoration>> GetDecorationsByRangeAsync(
         DateOnly from, DateOnly to,
         CancellationToken cancellationToken = default);
