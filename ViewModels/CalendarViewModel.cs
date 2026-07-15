@@ -6,13 +6,12 @@ using System.Threading;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using HmDesktopCalendar.Calendar;
-using HmDesktopCalendar.Todos;
 
 namespace HmDesktopCalendar.ViewModels;
 
 public sealed partial class CalendarViewModel : ViewModelBase
 {
-    private readonly ITodoRepository _repository;
+    private readonly ICalendarRepository _repository;
     private readonly Func<DateTime> _todayProvider;
     private readonly Func<Action, Task> _updateUi;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
@@ -28,12 +27,12 @@ public sealed partial class CalendarViewModel : ViewModelBase
     [ObservableProperty] private bool _isSynchronizationFailed;
     private DateTimeOffset? _lastSuccessfulSynchronization;
 
-    public CalendarViewModel(ITodoRepository repository) : this(repository,
+    public CalendarViewModel(ICalendarRepository repository) : this(repository,
         () => DateTime.Today, UpdateOnUiThreadAsync)
     {
     }
 
-    public CalendarViewModel(ITodoRepository repository,
+    public CalendarViewModel(ICalendarRepository repository,
         Func<DateTime> todayProvider, Func<Action, Task> updateUi)
     {
         _repository = repository;
@@ -76,18 +75,22 @@ public sealed partial class CalendarViewModel : ViewModelBase
             : "로컬 전용";
     }
 
-    public void ApplySynchronizationState(TodoSynchronizationState state)
+    public void ApplySynchronizationState(CalendarSynchronizationState state)
     {
-        IsSynchronizing = state.Status == TodoSynchronizationStatus.InProgress;
-        IsSynchronizationFailed = state.Status == TodoSynchronizationStatus.Failed;
-        if (state.Status == TodoSynchronizationStatus.Succeeded)
+        IsSynchronizing =
+            state.Status == CalendarSynchronizationStatus.InProgress;
+        IsSynchronizationFailed =
+            state.Status == CalendarSynchronizationStatus.Failed;
+        if (state.Status == CalendarSynchronizationStatus.Succeeded)
             _lastSuccessfulSynchronization = state.OccurredAt;
 
         SynchronizationStatus = state.Status switch
         {
-            TodoSynchronizationStatus.InProgress => "동기화 중…",
-            TodoSynchronizationStatus.Succeeded => FormatLastSuccess("동기화 완료"),
-            TodoSynchronizationStatus.Failed => FormatLastSuccess("동기화 실패"),
+            CalendarSynchronizationStatus.InProgress => "동기화 중…",
+            CalendarSynchronizationStatus.Succeeded =>
+                FormatLastSuccess("동기화 완료"),
+            CalendarSynchronizationStatus.Failed =>
+                FormatLastSuccess("동기화 실패"),
             _ => SynchronizationStatus
         };
     }
@@ -112,21 +115,26 @@ public sealed partial class CalendarViewModel : ViewModelBase
         {
             CalendarMonth month = _month;
             var dates = month.GetDates();
-            var todos = await _repository.GetByRangeAsync(dates[0], dates[^1]);
+            var occurrences = await _repository.GetOccurrencesByRangeAsync(
+                dates[0], dates[^1]);
             var snapshot = new System.Collections.Generic.List<CalendarDayViewModel>();
             foreach (DateOnly date in dates)
             {
-                var dateTodos = todos.Where(item => item.Date == date)
+                var dateItems = occurrences
+                    .Where(occurrence => occurrence.Date == date &&
+                        occurrence.Item.Kind == CalendarItemKind.Schedule)
+                    .Select(occurrence => occurrence.Item)
                     .OrderBy(item => item.IsCompleted)
-                    .ThenBy(item => item.Time)
+                    .ThenBy(item => item.StartTime)
                     .ThenBy(item => item.Title)
                     .ToArray();
-                int incompleteCount = dateTodos.Count(item => !item.IsCompleted);
-                int completedCount = dateTodos.Length - incompleteCount;
-                var taskRows = dateTodos.Select(item =>
+                int incompleteCount = dateItems.Count(item => !item.IsCompleted);
+                int completedCount = dateItems.Length - incompleteCount;
+                var taskRows = dateItems.Select(item =>
                     new CalendarTaskPreviewViewModel(
-                        item.Time is { } time ? $"{time:HH:mm}" : string.Empty,
-                        item.Title, item.IsCompleted)).ToArray();
+                        item.StartTime is { } time
+                            ? $"{time:HH:mm}" : string.Empty,
+                        item.Title, item.IsCompleted, item.Color)).ToArray();
                 snapshot.Add(new CalendarDayViewModel(
                     date,
                     date.Month == month.FirstDay.Month,

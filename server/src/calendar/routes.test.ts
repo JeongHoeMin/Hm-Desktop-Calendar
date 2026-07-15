@@ -69,7 +69,7 @@ describe('calendar v2 routes', () => {
         kind: 'schedule', title: '일정', notes: '',
         startDate: '2026-07-15', endDate: '2026-07-15',
         startTime: null, endTime: null, allDay: true, completed: false,
-        color: '#3B82F6', recurrence: null,
+        color: '#0041E6', recurrence: null,
         reminders: [{ minutesBefore: 30 }]
       }
     })
@@ -113,6 +113,39 @@ describe('calendar v2 routes', () => {
       }
     })
     expect(response.statusCode).toBe(400)
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('rejects unsupported recurrence rules and low-contrast text', async () => {
+    const query = vi.fn(async () => ({ rows: [] }))
+    const app = createApp(query)
+    await app.register(calendarRoutes)
+    const base = {
+      kind: 'schedule', title: '검증 일정', notes: '',
+      startDate: '2026-07-15', endDate: '2026-07-15',
+      startTime: null, endTime: null, allDay: true, completed: false,
+      color: '#0041E6', reminders: []
+    }
+    const responses = await Promise.all([
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, endDate: '2026-07-16', recurrence: {
+          frequency: 'daily', interval: 1, daysOfWeek: [], until: null,
+          count: null
+        } } }),
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, recurrence: {
+          frequency: 'daily', interval: 1, daysOfWeek: [], until: null,
+          count: 3
+        } } }),
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, recurrence: {
+          frequency: 'weekly', interval: 1, daysOfWeek: [], until: null,
+          count: null
+        } } }),
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, color: '#FFFFFF', recurrence: null } })
+    ])
+    expect(responses.every(response => response.statusCode === 400)).toBe(true)
     expect(query).not.toHaveBeenCalled()
   })
 })

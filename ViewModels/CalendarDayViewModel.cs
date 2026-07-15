@@ -10,16 +10,19 @@ namespace HmDesktopCalendar.ViewModels;
 public sealed class CalendarTaskPreviewViewModel
 {
     public CalendarTaskPreviewViewModel(string timeText, string title,
-        bool isCompleted)
+        bool isCompleted, string color)
     {
         TimeText = timeText;
         Title = title;
         IsCompleted = isCompleted;
+        TextBrush = Color.TryParse(color, out Color parsed)
+            ? new SolidColorBrush(parsed) : Brushes.Black;
     }
 
     public string TimeText { get; }
     public string Title { get; }
     public bool IsCompleted { get; }
+    public IBrush TextBrush { get; }
     public double Opacity => IsCompleted ? 0.5 : 1.0;
     public TextDecorationCollection? TitleDecorations =>
         IsCompleted ? TextDecorations.Strikethrough : null;

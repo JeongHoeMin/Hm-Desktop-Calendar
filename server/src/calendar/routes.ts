@@ -91,6 +91,25 @@ const routes: FastifyPluginAsync = async app => {
       return reply.code(400).send({
         message: '종료 날짜는 시작 날짜보다 빠를 수 없습니다.'
       })
+    if (body.recurrence && body.endDate !== body.startDate)
+      return reply.code(400).send({
+        message: '기간 일정과 반복 일정은 함께 사용할 수 없습니다.'
+      })
+    if (body.recurrence?.count != null)
+      return reply.code(400).send({ message: '반복 횟수는 지원하지 않습니다.' })
+    if (body.recurrence?.until && body.recurrence.until < body.startDate)
+      return reply.code(400).send({
+        message: '반복 종료일은 시작 날짜보다 빠를 수 없습니다.'
+      })
+    if (body.recurrence?.frequency === 'weekly' &&
+        body.recurrence.daysOfWeek.length === 0)
+      return reply.code(400).send({
+        message: '매주 반복은 한 개 이상의 요일이 필요합니다.'
+      })
+    if (!hasAccessibleTextContrast(body.color))
+      return reply.code(400).send({
+        message: '일정 텍스트 색상은 중립 배경에서 4.5:1 이상의 대비가 필요합니다.'
+      })
     const result = await app.db.query(
       `WITH changed AS (
          INSERT INTO calendar_items(user_id,id,kind,title,notes,start_date,end_date,
@@ -185,6 +204,22 @@ async function notify(app: Parameters<FastifyPluginAsync>[0], userId: string,
   cursor: string | number) {
   await app.db.query(`SELECT pg_notify('todo_changed',$1)`,
     [`${userId}:${cursor}`])
+}
+
+function hasAccessibleTextContrast(color: string) {
+  const foreground = relativeLuminance(color)
+  const background = relativeLuminance('#F8F9FC')
+  return (Math.max(foreground, background) + 0.05) /
+    (Math.min(foreground, background) + 0.05) >= 4.5
+}
+
+function relativeLuminance(color: string) {
+  const channels = [1, 3, 5].map(index =>
+    Number.parseInt(color.slice(index, index + 2), 16) / 255)
+  const linear = channels.map(channel => channel <= 0.04045
+    ? channel / 12.92
+    : ((channel + 0.055) / 1.055) ** 2.4)
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!
 }
 
 export default routes
