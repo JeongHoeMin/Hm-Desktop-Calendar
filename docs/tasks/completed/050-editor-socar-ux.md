@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/editor-socar-ux`
 
 ## 목표
@@ -53,7 +53,14 @@
 - .NET 빌드와 회귀 테스트를 실행하고 키보드 탐색·최소 크기를 수동 확인한다.
 - PR에 편집 화면 스크린샷을 첨부한다.
 
+- .NET Release 빌드를 경고 0개, 오류 0개로 통과했다.
+- 기존 회귀 테스트와 편집·색상·v2 동기화 테스트 35개를 모두 통과했다.
+- 서버 테스트 8개와 TypeScript 빌드를 통과했다.
+- Avalonia Headless와 Skia로 640×560 최소 크기 및 색상 영역 렌더링을 확인했다.
+- 기본 Tab 순서, 팔레트 접근성 이름과 확인 창 기본·취소 버튼을 검토했다.
+- `git diff --check main...HEAD`를 통과했다.
+
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `eb6e494`, `3a6ef7b`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/8
