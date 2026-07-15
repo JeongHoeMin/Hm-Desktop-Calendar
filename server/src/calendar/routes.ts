@@ -29,8 +29,9 @@ const calendarItemBody = Type.Object({
   color: Type.String({ pattern: '^#[0-9A-Fa-f]{6}$' }),
   recurrence,
   reminders: Type.Array(Type.Object({
-    minutesBefore: Type.Integer({ minimum: 0, maximum: 525600 })
-  }), { maxItems: 20 })
+    minutesBefore: Type.Integer({ minimum: 0, maximum: 525600 }),
+    timeOfDay: Type.Optional(nullableTime)
+  }), { maxItems: 20, uniqueItems: true })
 })
 const decorationBody = Type.Object({
   date: Type.String({ format: 'date' }),
@@ -105,6 +106,16 @@ const routes: FastifyPluginAsync = async app => {
         body.recurrence.daysOfWeek.length === 0)
       return reply.code(400).send({
         message: '매주 반복은 한 개 이상의 요일이 필요합니다.'
+      })
+    if (body.startTime == null && body.reminders.some(reminder =>
+        reminder.timeOfDay == null))
+      return reply.code(400).send({
+        message: '시간 없는 일정의 알림에는 알림 시각이 필요합니다.'
+      })
+    if (body.startTime != null && body.reminders.some(reminder =>
+        reminder.timeOfDay != null))
+      return reply.code(400).send({
+        message: '시간 있는 일정의 알림 시각은 일정 시작 시각을 사용합니다.'
       })
     if (body.kind === 'anniversary' && (body.completed ||
         body.recurrence?.frequency !== 'yearly' ||

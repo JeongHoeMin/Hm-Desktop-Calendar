@@ -11,6 +11,7 @@ using Avalonia.Threading;
 using HmDesktopCalendar.Authentication;
 using HmDesktopCalendar.Calendar;
 using HmDesktopCalendar.DesktopIntegration;
+using HmDesktopCalendar.Reminders;
 using HmDesktopCalendar.Services;
 using HmDesktopCalendar.ViewModels;
 using HmDesktopCalendar.Views;
@@ -22,11 +23,14 @@ public partial class App : Application
     private readonly AuthSession _session;
     private readonly SyncingCalendarRepository _repository;
     private readonly RealtimeSyncClient _realtime;
+    private readonly ReminderScheduler _reminders;
     private readonly CalendarSettingsStore _settings = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _sessionGate = new(1, 1);
     private readonly object _taskLock = new();
     private readonly HashSet<Task> _backgroundTasks = [];
+    private readonly Queue<ReminderNotification> _reminderQueue = [];
+    private readonly HashSet<string> _queuedReminderKeys = [];
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
     private IClassicDesktopStyleApplicationLifetime? _desktop;
@@ -37,6 +41,7 @@ public partial class App : Application
     private TrayIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private LoginWindow? _loginWindow;
+    private ReminderWindow? _reminderWindow;
     private CalendarBoundsController? _positionController;
     private bool _initializing;
     private bool _sessionChanging;
@@ -50,6 +55,9 @@ public partial class App : Application
         var local = new LocalCalendarRepository();
         _repository = new SyncingCalendarRepository(local,
             new RemoteCalendarRepository(_session, serverUrl), _session);
+        _reminders = new ReminderScheduler(_repository,
+            new JsonReminderDeviceStateStore(), new SystemReminderClock(),
+            () => _session.User?.Id.ToString("N") ?? "anonymous");
         string realtimeUrl = serverUrl.Replace("http://", "ws://")
             .Replace("https://", "wss://").TrimEnd('/') + "/v1/realtime";
         _realtime = new RealtimeSyncClient(_session, realtimeUrl);
@@ -87,6 +95,7 @@ public partial class App : Application
             _realtime.SyncRequested += OnRealtimeSync;
             _repository.Changed += OnRepositoryChanged;
             _repository.SynchronizationStateChanged += OnSynchronizationStateChanged;
+            _reminders.ReminderDue += OnReminderDue;
             _session.Changed += OnSessionChanged;
             window.Opened += OnMainWindowOpened;
             _windowHost.Start();
@@ -111,6 +120,7 @@ public partial class App : Application
             if (_session.IsLoggedIn)
                 await _repository.SynchronizeAsync(_lifetime.Token);
             await _calendar.InitializeAsync();
+            _reminders.Start();
         }
         finally { _initializing = false; }
 
@@ -244,6 +254,53 @@ public partial class App : Application
         RunBackground(_calendar.RefreshAsync);
     }
 
+    private void OnReminderDue(object? sender, ReminderNotification notification) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_shuttingDown || !_queuedReminderKeys.Add(notification.Key)) return;
+            _reminderQueue.Enqueue(notification);
+            ShowNextReminder();
+        });
+
+    private void ShowNextReminder()
+    {
+        if (_reminderWindow is not null || _reminderQueue.Count == 0 ||
+            _shuttingDown) return;
+        ReminderNotification notification = _reminderQueue.Dequeue();
+        var window = _reminderWindow = new ReminderWindow(notification);
+        window.ActionRequested += OnReminderAction;
+        window.Closed += OnReminderWindowClosed;
+        window.Show();
+        window.Activate();
+    }
+
+    private void OnReminderAction(object? sender,
+        ReminderWindowActionEventArgs eventArgs)
+    {
+        if (sender is not ReminderWindow window) return;
+        ReminderNotification notification = window.Notification;
+        _queuedReminderKeys.Remove(notification.Key);
+        if (eventArgs.Action == ReminderWindowAction.Snooze)
+            RunBackground(() => _reminders.SnoozeAsync(notification,
+                eventArgs.SnoozeMinutes, _lifetime.Token));
+        else
+            RunBackground(() => _reminders.AcknowledgeAsync(notification,
+                _lifetime.Token));
+        if (eventArgs.Action == ReminderWindowAction.Edit)
+            OnDateEdit(this, notification.OccurrenceDate);
+    }
+
+    private void OnReminderWindowClosed(object? sender, EventArgs eventArgs)
+    {
+        if (sender is ReminderWindow window)
+        {
+            window.ActionRequested -= OnReminderAction;
+            window.Closed -= OnReminderWindowClosed;
+        }
+        _reminderWindow = null;
+        ShowNextReminder();
+    }
+
     private void OnSynchronizationStateChanged(object? sender,
         CalendarSynchronizationState state) => Dispatcher.UIThread.Post(() =>
         {
@@ -322,6 +379,7 @@ public partial class App : Application
         _realtime.SyncRequested -= OnRealtimeSync;
         _repository.Changed -= OnRepositoryChanged;
         _repository.SynchronizationStateChanged -= OnSynchronizationStateChanged;
+        _reminders.ReminderDue -= OnReminderDue;
         _session.Changed -= OnSessionChanged;
         if (_mainWindow is not null)
             _mainWindow.Opened -= OnMainWindowOpened;
@@ -336,6 +394,8 @@ public partial class App : Application
             _interaction.MenuRequested -= OnMenuRequested;
         }
 
+        await _reminders.StopAsync();
+        _reminderWindow?.CloseSilently();
         _lifetime.Cancel();
         await _realtime.StopAsync();
         await _repository.StopAsync();
@@ -348,6 +408,7 @@ public partial class App : Application
         _trayIcon?.Dispose();
         await _realtime.DisposeAsync();
         await _repository.DisposeAsync();
+        await _reminders.DisposeAsync();
         _session.Dispose();
         _sessionGate.Dispose();
         _lifetime.Dispose();

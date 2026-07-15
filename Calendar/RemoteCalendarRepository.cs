@@ -68,7 +68,8 @@ public sealed class RemoteCalendarRepository : IDisposable
             recurrence,
             reminders = item.Reminders.Select(reminder => new
             {
-                minutesBefore = reminder.MinutesBefore
+                minutesBefore = reminder.MinutesBefore,
+                timeOfDay = reminder.TimeOfDay?.ToString("HH:mm")
             }).ToArray()
         };
         using HttpResponseMessage response = await _http.PutAsJsonAsync(
@@ -195,7 +196,8 @@ public sealed class RemoteCalendarRepository : IDisposable
                     (DayOfWeek)day).ToArray(),
                 item.Recurrence.Until, item.Recurrence.Count),
             Reminders = item.Reminders.Select(reminder =>
-                new CalendarReminder(reminder.MinutesBefore)).ToList(),
+                new CalendarReminder(reminder.MinutesBefore,
+                    ParseTime(reminder.TimeOfDay))).ToList(),
             IsDeleted = item.Deleted,
             Revision = item.Revision,
             Cursor = cursor,
@@ -270,7 +272,7 @@ public sealed class RemoteCalendarRepository : IDisposable
         DateTimeOffset UpdatedAt);
     private sealed record RemoteRecurrence(string Frequency, int Interval,
         int[] DaysOfWeek, DateOnly? Until, int? Count);
-    private sealed record RemoteReminder(int MinutesBefore);
+    private sealed record RemoteReminder(int MinutesBefore, string? TimeOfDay);
     private sealed record RemoteDecoration(Guid Id, DateOnly Date, string Kind,
         string Color, string Label, bool Deleted, long Revision, long Cursor,
         DateTimeOffset UpdatedAt);

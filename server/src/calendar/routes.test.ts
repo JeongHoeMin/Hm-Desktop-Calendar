@@ -70,7 +70,7 @@ describe('calendar v2 routes', () => {
         startDate: '2026-07-15', endDate: '2026-07-15',
         startTime: null, endTime: null, allDay: true, completed: false,
         color: '#0041E6', recurrence: null,
-        reminders: [{ minutesBefore: 30 }]
+        reminders: [{ minutesBefore: 30, timeOfDay: '09:00' }]
       }
     })
     expect(itemResponse.statusCode).toBe(200)
@@ -143,7 +143,14 @@ describe('calendar v2 routes', () => {
           count: null
         } } }),
       app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
-        payload: { ...base, color: '#FFFFFF', recurrence: null } })
+        payload: { ...base, color: '#FFFFFF', recurrence: null } }),
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, recurrence: null,
+          reminders: [{ minutesBefore: 15 }] } }),
+      app.inject({ method: 'PUT', url: `/v2/calendar-items/${entityId}`,
+        payload: { ...base, startTime: '09:00', allDay: false,
+          recurrence: null,
+          reminders: [{ minutesBefore: 15, timeOfDay: '08:00' }] } })
     ])
     expect(responses.every(response => response.statusCode === 400)).toBe(true)
     expect(query).not.toHaveBeenCalled()

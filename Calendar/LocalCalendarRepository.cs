@@ -90,8 +90,7 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
             nameof(item));
         item.Color = color.NormalizedColor;
         CalendarOccurrenceEngine.ValidateItem(item);
-        if (item.Reminders.Any(reminder => reminder.MinutesBefore < 0))
-            throw new ArgumentException("알림 시간은 음수일 수 없습니다.", nameof(item));
+        ValidateReminders(item);
 
         return MutateAsync(document =>
         {
@@ -103,6 +102,26 @@ public sealed class LocalCalendarRepository : ICalendarRepository, IDisposable
             if (index < 0) document.Items.Add(Clone(item));
             else document.Items[index] = Clone(item);
         }, cancellationToken);
+    }
+
+    private static void ValidateReminders(CalendarItem item)
+    {
+        if (item.Reminders.Count > 20)
+            throw new ArgumentException("알림은 일정당 20개까지 저장할 수 있습니다.",
+                nameof(item));
+        if (item.Reminders.Any(reminder => reminder.MinutesBefore is < 0 or > 525600))
+            throw new ArgumentException(
+                "알림 간격은 0분부터 525,600분까지 지정할 수 있습니다.", nameof(item));
+        if (item.StartTime is null && item.Reminders.Any(reminder =>
+                reminder.TimeOfDay is null))
+            throw new ArgumentException(
+                "시간 없는 일정의 알림에는 알림 시각이 필요합니다.", nameof(item));
+        if (item.StartTime is not null && item.Reminders.Any(reminder =>
+                reminder.TimeOfDay is not null))
+            throw new ArgumentException(
+                "시간 있는 일정의 알림 시각은 일정 시작 시각을 사용합니다.", nameof(item));
+        if (item.Reminders.Distinct().Count() != item.Reminders.Count)
+            throw new ArgumentException("같은 알림을 중복해서 저장할 수 없습니다.", nameof(item));
     }
 
     public Task DeleteItemAsync(Guid id,
