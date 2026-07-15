@@ -1,7 +1,7 @@
 # 070 기간·반복 일정 편집
 
 ## 상태
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/range-recurrence-editor`
 
 ## 목표
@@ -52,5 +52,5 @@
   `docs/screenshots/070-editor-range-month-boundary.png`에 기록했다.
 
 ## 작업 결과
-- 커밋: 미정
-- PR: 미정
+- 커밋: `b9875dd`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/10
