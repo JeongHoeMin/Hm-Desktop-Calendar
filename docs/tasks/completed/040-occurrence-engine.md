@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/occurrence-engine`
 
 ## 목표
@@ -47,7 +47,11 @@
 - 기간 경계, 주간 요일, 간격, 월말, 윤년과 종료일 단위 테스트를 추가한다.
 - 전체 시리즈 수정·완료·삭제와 달력 표시 회귀 테스트를 실행한다.
 
+- .NET Release 빌드를 경고 0개, 오류 0개로 통과했다.
+- 기존 회귀 테스트와 발생 일정 테스트 26개를 모두 통과했다.
+- `git diff --check main...HEAD`를 통과했다.
+
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `4005a24`, `f0eebf7`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/7
