@@ -11,6 +11,13 @@ using HmDesktopCalendar.Calendar;
 
 namespace HmDesktopCalendar.ViewModels;
 
+public enum CalendarEditMode
+{
+    Single,
+    Range,
+    Recurring
+}
+
 public sealed partial class CalendarEditorDraftViewModel : ObservableObject
 {
     public const string DefaultTextColor = CalendarTextColor.DefaultColor;
@@ -22,7 +29,7 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     private string _originalNotes = string.Empty;
     private bool _originalCompleted;
     private string _originalColor = DefaultTextColor;
-    private bool _originalAnniversary;
+    private SeriesEditorState _originalSeriesState;
 
     [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private TimeSpan? _timeValue;
@@ -30,6 +37,19 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     [ObservableProperty] private bool _isCompleted;
     [ObservableProperty] private string _color = DefaultTextColor;
     [ObservableProperty] private bool _isAnniversary;
+    [ObservableProperty] private CalendarEditMode _mode;
+    [ObservableProperty] private DateTimeOffset? _endDateValue;
+    [ObservableProperty] private int _recurrenceFrequencyIndex;
+    [ObservableProperty] private decimal _recurrenceInterval = 1;
+    [ObservableProperty] private bool _sunday;
+    [ObservableProperty] private bool _monday;
+    [ObservableProperty] private bool _tuesday;
+    [ObservableProperty] private bool _wednesday;
+    [ObservableProperty] private bool _thursday;
+    [ObservableProperty] private bool _friday;
+    [ObservableProperty] private bool _saturday;
+    [ObservableProperty] private bool _hasRecurrenceUntil;
+    [ObservableProperty] private DateTimeOffset? _recurrenceUntilValue;
 
     public Guid? SourceId => _source?.Id;
     public bool IsEditing => _source is not null;
@@ -39,6 +59,32 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     public string SaveButtonText => IsEditing ? "변경 저장" :
         IsAnniversary ? "기념일 추가" : "일정 추가";
     public bool IsSchedule => !IsAnniversary;
+    public bool IsSingleMode => IsSchedule && Mode == CalendarEditMode.Single;
+    public bool IsRangeMode => IsSchedule && Mode == CalendarEditMode.Range;
+    public bool IsRecurringMode => IsSchedule &&
+        Mode == CalendarEditMode.Recurring;
+    public bool IsWeeklyRecurrence => IsRecurringMode &&
+        RecurrenceFrequencyIndex == (int)RecurrenceFrequency.Weekly;
+    public bool ShowsSeriesScopeNotice => IsEditing &&
+        (IsAnniversary || Mode != CalendarEditMode.Single);
+    public string StartDateText => $"{_date:yyyy년 M월 d일}";
+    public string CompletionLabel => Mode == CalendarEditMode.Single
+        ? "완료된 일정" : "전체 시리즈 완료";
+    public string SeriesScopeText => IsAnniversary
+        ? "기념일 전체 시리즈를 수정합니다. 매년 같은 날짜에 반영됩니다."
+        : Mode == CalendarEditMode.Range
+            ? "기간 전체를 하나의 일정으로 수정·완료·삭제합니다."
+            : "모든 반복 발생 날짜에 적용되는 전체 시리즈를 수정합니다.";
+    public string SeriesSummary => IsAnniversary ? "매년 · 종료 없음" :
+        Mode switch
+        {
+            CalendarEditMode.Single => "하루 일정",
+            CalendarEditMode.Range => EndDateValue is { } end
+                ? $"{StartDateText}부터 {ToDate(end):yyyy년 M월 d일}까지"
+                : "종료일을 선택하세요.",
+            CalendarEditMode.Recurring => FormatRecurrenceSummary(),
+            _ => string.Empty
+        };
     public bool HasUnsavedChanges =>
         !string.Equals(Title, _originalTitle, StringComparison.Ordinal) ||
         TimeValue != _originalTime ||
@@ -46,7 +92,7 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         IsCompleted != _originalCompleted ||
         !string.Equals(Color, _originalColor,
             StringComparison.OrdinalIgnoreCase) ||
-        IsAnniversary != _originalAnniversary;
+        CaptureSeriesState() != _originalSeriesState;
     public TextColorValidation ColorValidation =>
         CalendarTextColor.Validate(Color);
     public string ValidationMessage
@@ -58,6 +104,32 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
                 return "제목은 500자 이하여야 합니다.";
             if (Notes.Length > 10000)
                 return "메모는 10,000자 이하여야 합니다.";
+            if (IsRangeMode)
+            {
+                if (EndDateValue is null) return "종료일을 선택하세요.";
+                if (ToDate(EndDateValue.Value) <= _date)
+                    return "기간 종료일은 시작일보다 늦어야 합니다.";
+            }
+            if (IsRecurringMode)
+            {
+                if (RecurrenceInterval < 1 ||
+                    RecurrenceInterval != decimal.Truncate(
+                        RecurrenceInterval))
+                    return "반복 간격은 1 이상의 정수여야 합니다.";
+                if (RecurrenceFrequencyIndex < 0 ||
+                    RecurrenceFrequencyIndex >
+                        (int)RecurrenceFrequency.Yearly)
+                    return "반복 빈도를 선택하세요.";
+                if (IsWeeklyRecurrence && GetWeekdayMask() == 0)
+                    return "매주 반복할 요일을 한 개 이상 선택하세요.";
+                if (HasRecurrenceUntil)
+                {
+                    if (RecurrenceUntilValue is null)
+                        return "반복 종료일을 선택하세요.";
+                    if (ToDate(RecurrenceUntilValue.Value) < _date)
+                        return "반복 종료일은 시작일보다 빠를 수 없습니다.";
+                }
+            }
             return ColorValidation.Message;
         }
     }
@@ -87,7 +159,7 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         _source = null;
         _date = date;
         LoadValues(string.Empty, null, string.Empty, false,
-            DefaultTextColor, false);
+            DefaultTextColor, false, null);
     }
 
     public void BeginEdit(CalendarItem source)
@@ -96,7 +168,7 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         _source = Clone(source);
         _date = source.StartDate;
         LoadValues(source.Title, source.StartTime?.ToTimeSpan(), source.Notes,
-            source.IsCompleted, source.Color, source.IsAnniversary);
+            source.IsCompleted, source.Color, source.IsAnniversary, source);
     }
 
     public void SetPaletteColor(string color) => Color = color;
@@ -112,7 +184,6 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
             StartDate = _date,
             EndDate = _date
         } : Clone(_source);
-        bool wasAnniversary = item.IsAnniversary;
         item.Title = Title.Trim();
         item.Notes = Notes.Trim();
         item.StartTime = TimeValue is { } time
@@ -121,9 +192,31 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         item.Kind = IsAnniversary ? CalendarItemKind.Anniversary :
             CalendarItemKind.Schedule;
         item.IsCompleted = IsAnniversary ? false : IsCompleted;
-        item.Recurrence = IsAnniversary
-            ? new RecurrenceRule(RecurrenceFrequency.Yearly)
-            : wasAnniversary ? null : item.Recurrence;
+        if (IsAnniversary)
+        {
+            item.EndDate = item.StartDate;
+            item.Recurrence = new RecurrenceRule(RecurrenceFrequency.Yearly);
+        }
+        else if (Mode == CalendarEditMode.Range)
+        {
+            item.EndDate = ToDate(EndDateValue!.Value);
+            item.Recurrence = null;
+        }
+        else if (Mode == CalendarEditMode.Recurring)
+        {
+            item.EndDate = item.StartDate;
+            item.Recurrence = new RecurrenceRule(
+                (RecurrenceFrequency)RecurrenceFrequencyIndex,
+                decimal.ToInt32(RecurrenceInterval),
+                IsWeeklyRecurrence ? GetSelectedWeekdays() : null,
+                HasRecurrenceUntil
+                    ? ToDate(RecurrenceUntilValue!.Value) : null);
+        }
+        else
+        {
+            item.EndDate = item.StartDate;
+            item.Recurrence = null;
+        }
         item.Color = color.NormalizedColor;
         return item;
     }
@@ -135,15 +228,86 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     partial void OnColorChanged(string value) => NotifyStateChanged();
     partial void OnIsAnniversaryChanged(bool value)
     {
-        if (value) IsCompleted = false;
-        NotifyStateChanged();
+        if (_loading) return;
+        _loading = true;
+        if (value)
+        {
+            IsCompleted = false;
+            Mode = CalendarEditMode.Recurring;
+            EndDateValue = null;
+            RecurrenceFrequencyIndex = (int)RecurrenceFrequency.Yearly;
+            RecurrenceInterval = 1;
+            SetWeekdays([]);
+            HasRecurrenceUntil = false;
+            RecurrenceUntilValue = null;
+        }
+        else
+        {
+            Mode = CalendarEditMode.Single;
+            EndDateValue = null;
+            ResetRecurrenceFields();
+        }
+        _loading = false;
         OnPropertyChanged(nameof(FormTitle));
         OnPropertyChanged(nameof(SaveButtonText));
         OnPropertyChanged(nameof(IsSchedule));
+        NotifySeriesStateChanged();
     }
 
+    partial void OnModeChanged(CalendarEditMode value)
+    {
+        if (_loading) return;
+        _loading = true;
+        if (value == CalendarEditMode.Range)
+            EndDateValue = ToDateTimeOffset(_date.AddDays(1));
+        else
+            EndDateValue = null;
+        ResetRecurrenceFields();
+        _loading = false;
+        NotifySeriesStateChanged();
+    }
+
+    partial void OnEndDateValueChanged(DateTimeOffset? value) =>
+        NotifySeriesStateChanged();
+
+    partial void OnRecurrenceFrequencyIndexChanged(int value)
+    {
+        if (_loading) return;
+        _loading = true;
+        SetWeekdays(value == (int)RecurrenceFrequency.Weekly
+            ? [_date.DayOfWeek] : []);
+        _loading = false;
+        NotifySeriesStateChanged();
+    }
+
+    partial void OnRecurrenceIntervalChanged(decimal value) =>
+        NotifySeriesStateChanged();
+    partial void OnSundayChanged(bool value) => NotifySeriesStateChanged();
+    partial void OnMondayChanged(bool value) => NotifySeriesStateChanged();
+    partial void OnTuesdayChanged(bool value) => NotifySeriesStateChanged();
+    partial void OnWednesdayChanged(bool value) => NotifySeriesStateChanged();
+    partial void OnThursdayChanged(bool value) => NotifySeriesStateChanged();
+    partial void OnFridayChanged(bool value) => NotifySeriesStateChanged();
+    partial void OnSaturdayChanged(bool value) => NotifySeriesStateChanged();
+
+    partial void OnHasRecurrenceUntilChanged(bool value)
+    {
+        if (_loading) return;
+        _loading = true;
+        RecurrenceUntilValue = value
+            ? ToDateTimeOffset(_date.AddYears(1)) : null;
+        _loading = false;
+        NotifySeriesStateChanged();
+    }
+
+    partial void OnRecurrenceUntilValueChanged(DateTimeOffset? value) =>
+        NotifySeriesStateChanged();
+
+    public void SetMode(CalendarEditMode mode) => Mode = mode;
+
     private void LoadValues(string title, TimeSpan? time, string notes,
-        bool completed, string color, bool anniversary)
+        bool completed, string color, bool anniversary,
+        CalendarItem? seriesSource)
     {
         _loading = true;
         Title = _originalTitle = title;
@@ -151,13 +315,31 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         Notes = _originalNotes = notes;
         IsCompleted = _originalCompleted = completed;
         Color = _originalColor = color;
-        IsAnniversary = _originalAnniversary = anniversary;
+        IsAnniversary = anniversary;
+        RecurrenceRule? recurrence = seriesSource?.Recurrence;
+        Mode = anniversary || recurrence is not null
+            ? CalendarEditMode.Recurring
+            : seriesSource is { } source && source.EndDate > source.StartDate
+                ? CalendarEditMode.Range : CalendarEditMode.Single;
+        EndDateValue = Mode == CalendarEditMode.Range && seriesSource is not null
+            ? ToDateTimeOffset(seriesSource.EndDate) : null;
+        RecurrenceFrequencyIndex = recurrence is null
+            ? (int)RecurrenceFrequency.Daily : (int)recurrence.Frequency;
+        RecurrenceInterval = recurrence?.Interval ?? 1;
+        SetWeekdays(recurrence?.DaysOfWeek ?? []);
+        HasRecurrenceUntil = recurrence?.Until is not null;
+        RecurrenceUntilValue = recurrence?.Until is { } until
+            ? ToDateTimeOffset(until) : null;
         _loading = false;
+        _originalSeriesState = CaptureSeriesState();
         NotifyStateChanged();
         OnPropertyChanged(nameof(SourceId));
         OnPropertyChanged(nameof(IsEditing));
         OnPropertyChanged(nameof(FormTitle));
         OnPropertyChanged(nameof(SaveButtonText));
+        OnPropertyChanged(nameof(IsSchedule));
+        OnPropertyChanged(nameof(StartDateText));
+        NotifySeriesStateChanged();
     }
 
     private void NotifyStateChanged()
@@ -173,6 +355,116 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         OnPropertyChanged(nameof(PreviewBrush));
         OnPropertyChanged(nameof(ContrastText));
     }
+
+    private void NotifySeriesStateChanged()
+    {
+        if (_loading) return;
+        NotifyStateChanged();
+        OnPropertyChanged(nameof(IsSingleMode));
+        OnPropertyChanged(nameof(IsRangeMode));
+        OnPropertyChanged(nameof(IsRecurringMode));
+        OnPropertyChanged(nameof(IsWeeklyRecurrence));
+        OnPropertyChanged(nameof(ShowsSeriesScopeNotice));
+        OnPropertyChanged(nameof(CompletionLabel));
+        OnPropertyChanged(nameof(SeriesScopeText));
+        OnPropertyChanged(nameof(SeriesSummary));
+    }
+
+    private void ResetRecurrenceFields()
+    {
+        RecurrenceFrequencyIndex = (int)RecurrenceFrequency.Daily;
+        RecurrenceInterval = 1;
+        SetWeekdays([]);
+        HasRecurrenceUntil = false;
+        RecurrenceUntilValue = null;
+    }
+
+    private void SetWeekdays(IEnumerable<DayOfWeek> values)
+    {
+        HashSet<DayOfWeek> selected = values.ToHashSet();
+        Sunday = selected.Contains(DayOfWeek.Sunday);
+        Monday = selected.Contains(DayOfWeek.Monday);
+        Tuesday = selected.Contains(DayOfWeek.Tuesday);
+        Wednesday = selected.Contains(DayOfWeek.Wednesday);
+        Thursday = selected.Contains(DayOfWeek.Thursday);
+        Friday = selected.Contains(DayOfWeek.Friday);
+        Saturday = selected.Contains(DayOfWeek.Saturday);
+    }
+
+    private IReadOnlyList<DayOfWeek> GetSelectedWeekdays()
+    {
+        var days = new List<DayOfWeek>(7);
+        if (Sunday) days.Add(DayOfWeek.Sunday);
+        if (Monday) days.Add(DayOfWeek.Monday);
+        if (Tuesday) days.Add(DayOfWeek.Tuesday);
+        if (Wednesday) days.Add(DayOfWeek.Wednesday);
+        if (Thursday) days.Add(DayOfWeek.Thursday);
+        if (Friday) days.Add(DayOfWeek.Friday);
+        if (Saturday) days.Add(DayOfWeek.Saturday);
+        return days;
+    }
+
+    private int GetWeekdayMask()
+    {
+        int mask = 0;
+        foreach (DayOfWeek day in GetSelectedWeekdays())
+            mask |= 1 << (int)day;
+        return mask;
+    }
+
+    private string FormatRecurrenceSummary()
+    {
+        int interval = RecurrenceInterval >= 1 &&
+            RecurrenceInterval == decimal.Truncate(RecurrenceInterval)
+                ? decimal.ToInt32(RecurrenceInterval) : 0;
+        string cadence = RecurrenceFrequencyIndex switch
+        {
+            (int)RecurrenceFrequency.Daily => interval == 1
+                ? "매일" : $"{interval}일마다",
+            (int)RecurrenceFrequency.Weekly => interval == 1
+                ? "매주" : $"{interval}주마다",
+            (int)RecurrenceFrequency.Monthly => interval == 1
+                ? "매월" : $"{interval}개월마다",
+            (int)RecurrenceFrequency.Yearly => interval == 1
+                ? "매년" : $"{interval}년마다",
+            _ => "반복 빈도 미선택"
+        };
+        if (IsWeeklyRecurrence)
+        {
+            string weekdays = string.Join("·", GetSelectedWeekdays().Select(
+                day => day switch
+                {
+                    DayOfWeek.Sunday => "일",
+                    DayOfWeek.Monday => "월",
+                    DayOfWeek.Tuesday => "화",
+                    DayOfWeek.Wednesday => "수",
+                    DayOfWeek.Thursday => "목",
+                    DayOfWeek.Friday => "금",
+                    DayOfWeek.Saturday => "토",
+                    _ => string.Empty
+                }));
+            cadence += weekdays.Length > 0 ? $" · {weekdays}" : " · 요일 미선택";
+        }
+        string end = HasRecurrenceUntil && RecurrenceUntilValue is { } until
+            ? $" · {ToDate(until):yyyy년 M월 d일}까지" : " · 종료 없음";
+        return cadence + end;
+    }
+
+    private SeriesEditorState CaptureSeriesState() => new(IsAnniversary, Mode,
+        EndDateValue is { } end ? ToDate(end) : null,
+        RecurrenceFrequencyIndex, RecurrenceInterval, GetWeekdayMask(),
+        HasRecurrenceUntil,
+        RecurrenceUntilValue is { } until ? ToDate(until) : null);
+
+    private static DateOnly ToDate(DateTimeOffset value) =>
+        DateOnly.FromDateTime(value.Date);
+
+    private static DateTimeOffset ToDateTimeOffset(DateOnly value) => new(
+        value.Year, value.Month, value.Day, 0, 0, 0, TimeSpan.Zero);
+
+    private readonly record struct SeriesEditorState(bool IsAnniversary,
+        CalendarEditMode Mode, DateOnly? EndDate, int FrequencyIndex,
+        decimal Interval, int WeekdayMask, bool HasUntil, DateOnly? Until);
 
     private static CalendarItem Clone(CalendarItem item) => new()
     {

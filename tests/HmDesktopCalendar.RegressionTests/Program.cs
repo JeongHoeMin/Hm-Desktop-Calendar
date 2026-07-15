@@ -52,6 +52,10 @@ internal static class Program
             ("이전 기본 색상은 접근 가능한 기본값으로 마이그레이션한다", LegacyTextColorIsMigrated),
             ("편집 초안은 변경을 감지하고 시리즈 필드를 보존한다", EditorDraftPreservesSeriesFields),
             ("기념일 편집은 완료 없는 연간 반복을 만든다", AnniversaryDraftCreatesYearlySeries),
+            ("편집 모드 전환은 사용하지 않는 필드를 초기화한다", EditorModeTransitionsResetUnusedFields),
+            ("기간·반복 입력은 잘못된 규칙을 차단한다", EditorSeriesValidationRejectsInvalidRules),
+            ("지원 반복 규칙은 편집 후 손실 없이 복원된다", EditorRecurrencesRoundTrip),
+            ("파생 날짜 편집은 전체 시리즈 원본을 변경한다", DerivedDateEditorUpdatesWholeSeries),
             ("날짜 배경 편집은 저장과 초기화를 같은 엔터티에 적용한다", DateBackgroundEditorConverges),
             ("저장하지 않은 편집은 일정·날짜 전환을 차단한다", EditorNavigationProtectsUnsavedChanges),
             ("추가·수정·완료·삭제는 중복 없이 저장된다", EditorOperationsDoNotDuplicateItems),
@@ -631,6 +635,166 @@ internal static class Program
             "완료된 기념일을 도메인 규칙이 허용했습니다.");
     }
 
+    private static void EditorModeTransitionsResetUnusedFields()
+    {
+        DateOnly date = new(2026, 7, 15);
+        var draft = new CalendarEditorDraftViewModel();
+        draft.BeginNew(date);
+        draft.Title = "모드 전환";
+
+        draft.SetMode(CalendarEditMode.Range);
+        Assert(draft.IsRangeMode && draft.EndDateValue?.Date ==
+               date.AddDays(1).ToDateTime(TimeOnly.MinValue),
+            "기간 모드가 기본 종료일을 만들지 않았습니다.");
+        draft.EndDateValue = new DateTimeOffset(2026, 7, 20, 0, 0, 0,
+            TimeSpan.Zero);
+
+        draft.SetMode(CalendarEditMode.Recurring);
+        Assert(draft.IsRecurringMode && draft.EndDateValue is null &&
+               draft.RecurrenceFrequencyIndex ==
+                   (int)RecurrenceFrequency.Daily &&
+               draft.RecurrenceInterval == 1 &&
+               !draft.HasRecurrenceUntil,
+            "반복 모드가 기간 전용 필드와 반복 기본값을 초기화하지 않았습니다.");
+        draft.RecurrenceFrequencyIndex = (int)RecurrenceFrequency.Weekly;
+        Assert(draft.Wednesday,
+            "주간 반복이 시작 날짜의 요일을 기본 선택하지 않았습니다.");
+        draft.HasRecurrenceUntil = true;
+
+        draft.SetMode(CalendarEditMode.Single);
+        Assert(draft.IsSingleMode && draft.EndDateValue is null &&
+               draft.RecurrenceFrequencyIndex ==
+                   (int)RecurrenceFrequency.Daily &&
+               draft.RecurrenceInterval == 1 && !draft.Sunday &&
+               !draft.Monday && !draft.Tuesday && !draft.Wednesday &&
+               !draft.Thursday && !draft.Friday && !draft.Saturday &&
+               !draft.HasRecurrenceUntil &&
+               draft.RecurrenceUntilValue is null,
+            "단일 모드가 기간·반복 전용 필드를 초기화하지 않았습니다.");
+    }
+
+    private static void EditorSeriesValidationRejectsInvalidRules()
+    {
+        DateOnly date = new(2026, 7, 15);
+        var draft = new CalendarEditorDraftViewModel();
+        draft.BeginNew(date);
+        draft.Title = "유효성 검사";
+        draft.SetMode(CalendarEditMode.Range);
+        draft.EndDateValue = new DateTimeOffset(2026, 7, 15, 0, 0, 0,
+            TimeSpan.Zero);
+        Assert(draft.ValidationMessage.Contains("시작일보다 늦어야"),
+            "시작일과 같은 기간 종료일을 허용했습니다.");
+
+        draft.SetMode(CalendarEditMode.Recurring);
+        draft.RecurrenceInterval = 0;
+        Assert(draft.ValidationMessage.Contains("1 이상의 정수"),
+            "0인 반복 간격을 허용했습니다.");
+        draft.RecurrenceInterval = 1.5m;
+        Assert(draft.ValidationMessage.Contains("1 이상의 정수"),
+            "소수 반복 간격을 허용했습니다.");
+        draft.RecurrenceInterval = 1;
+        draft.RecurrenceFrequencyIndex = (int)RecurrenceFrequency.Weekly;
+        draft.Wednesday = false;
+        Assert(draft.ValidationMessage.Contains("요일을 한 개 이상"),
+            "요일 없는 주간 반복을 허용했습니다.");
+        draft.Monday = true;
+        draft.HasRecurrenceUntil = true;
+        draft.RecurrenceUntilValue = new DateTimeOffset(2026, 7, 14,
+            0, 0, 0, TimeSpan.Zero);
+        Assert(draft.ValidationMessage.Contains("빠를 수 없습니다"),
+            "시작일보다 빠른 반복 종료일을 허용했습니다.");
+    }
+
+    private static void EditorRecurrencesRoundTrip()
+    {
+        DateOnly date = new(2026, 7, 15);
+        foreach (RecurrenceFrequency frequency in
+                 Enum.GetValues<RecurrenceFrequency>())
+        {
+            var draft = new CalendarEditorDraftViewModel();
+            draft.BeginNew(date);
+            draft.Title = $"{frequency} 반복";
+            draft.SetMode(CalendarEditMode.Recurring);
+            draft.RecurrenceFrequencyIndex = (int)frequency;
+            draft.RecurrenceInterval = 2;
+            if (frequency == RecurrenceFrequency.Weekly)
+            {
+                draft.Wednesday = false;
+                draft.Monday = true;
+                draft.Friday = true;
+            }
+            draft.HasRecurrenceUntil = true;
+            draft.RecurrenceUntilValue = new DateTimeOffset(2027, 7, 15,
+                0, 0, 0, TimeSpan.Zero);
+
+            CalendarItem item = draft.CreateItem();
+            var reopened = new CalendarEditorDraftViewModel();
+            reopened.BeginEdit(item);
+            CalendarItem restored = reopened.CreateItem();
+            bool weekdaysMatch = frequency == RecurrenceFrequency.Weekly
+                ? restored.Recurrence?.DaysOfWeek?.SequenceEqual(
+                    [DayOfWeek.Monday, DayOfWeek.Friday]) == true
+                : restored.Recurrence?.DaysOfWeek is null;
+            Assert(reopened.IsRecurringMode &&
+                   restored.Recurrence?.Frequency == frequency &&
+                   restored.Recurrence?.Interval == 2 &&
+                   restored.Recurrence?.Until == new DateOnly(2027, 7, 15) &&
+                   weekdaysMatch,
+                $"{frequency} 반복 규칙을 다시 열어 복원하지 못했습니다.");
+        }
+
+        var rangeDraft = new CalendarEditorDraftViewModel();
+        rangeDraft.BeginNew(date);
+        rangeDraft.Title = "월 경계 기간";
+        rangeDraft.SetMode(CalendarEditMode.Range);
+        rangeDraft.EndDateValue = new DateTimeOffset(2026, 8, 2,
+            0, 0, 0, TimeSpan.Zero);
+        CalendarItem range = rangeDraft.CreateItem();
+        var reopenedRange = new CalendarEditorDraftViewModel();
+        reopenedRange.BeginEdit(range);
+        Assert(reopenedRange.IsRangeMode &&
+               reopenedRange.CreateItem().EndDate == new DateOnly(2026, 8, 2),
+            "월 경계 기간 일정을 다시 열어 복원하지 못했습니다.");
+    }
+
+    private static void DerivedDateEditorUpdatesWholeSeries()
+    {
+        var repository = new InMemoryCalendarRepository();
+        DateOnly start = new(2026, 7, 1);
+        var series = new CalendarItem
+        {
+            Title = "매주 회의",
+            StartDate = start,
+            EndDate = start,
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly,
+                1, [DayOfWeek.Wednesday])
+        };
+        repository.UpsertItemAsync(series).GetAwaiter().GetResult();
+        DateOnly derivedDate = new(2026, 7, 15);
+        using var viewModel = new CalendarEditorViewModel(
+            derivedDate, repository, ImmediateUpdate);
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        CalendarItem occurrenceSource = viewModel.Items.Single();
+        Assert(occurrenceSource.Id == series.Id &&
+               occurrenceSource.StartDate == start,
+            "파생 날짜에서 시리즈 원본을 불러오지 못했습니다.");
+
+        viewModel.BeginEdit(occurrenceSource);
+        Assert(viewModel.Draft.StartDateText == "2026년 7월 1일" &&
+               viewModel.Draft.ShowsSeriesScopeNotice,
+            "파생 날짜 편집에 원본 시작일과 전체 시리즈 안내를 표시하지 않았습니다.");
+        viewModel.Draft.Title = "수정된 매주 회의";
+        viewModel.Draft.IsCompleted = true;
+        Assert(viewModel.SaveDraftAsync().GetAwaiter().GetResult() &&
+               viewModel.Items.Single().Id == series.Id &&
+               viewModel.Items.Single().Title == "수정된 매주 회의" &&
+               viewModel.Items.Single().IsCompleted,
+            "파생 날짜 수정·완료를 전체 시리즈 원본에 적용하지 못했습니다.");
+        Assert(viewModel.DeleteAsync(viewModel.Items.Single())
+                   .GetAwaiter().GetResult() && viewModel.Items.Count == 0,
+            "파생 날짜 삭제를 전체 시리즈 원본에 적용하지 못했습니다.");
+    }
+
     private static void DateBackgroundEditorConverges()
     {
         var repository = new InMemoryCalendarRepository();
@@ -896,7 +1060,9 @@ internal static class Program
                    "kind":"schedule","title":"원격 일정","notes":"메모",
                    "startDate":"2026-07-15","endDate":"2026-07-15",
                    "startTime":"09:30","endTime":null,"allDay":false,
-                   "completed":false,"color":"#0041E6","recurrence":null,
+                   "completed":false,"color":"#0041E6","recurrence":{
+                     "frequency":"weekly","interval":2,"daysOfWeek":[1,5],
+                     "until":"2026-12-31","count":null},
                    "reminders":[],"deleted":false,"revision":2,"cursor":6,
                    "updatedAt":"2026-07-15T00:00:00Z"}
                   """
@@ -907,7 +1073,9 @@ internal static class Program
                       "kind":"schedule","title":"다른 환경 일정","notes":"",
                       "startDate":"2026-07-16","endDate":"2026-07-16",
                       "startTime":null,"endTime":null,"allDay":true,
-                      "completed":false,"color":"#141A24","recurrence":null,
+                      "completed":false,"color":"#141A24","recurrence":{
+                        "frequency":"monthly","interval":1,"daysOfWeek":[],
+                        "until":null,"count":null},
                       "reminders":[],"deleted":false,"revision":3,
                       "updatedAt":"2026-07-15T01:00:00Z"}},
                     {"entityType":"dateCellDecoration","cursor":8,"payload":{
@@ -935,19 +1103,31 @@ internal static class Program
             StartDate = date,
             EndDate = date,
             StartTime = new TimeOnly(9, 30),
-            Color = "#0041E6"
+            Color = "#0041E6",
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly, 2,
+                [DayOfWeek.Monday, DayOfWeek.Friday],
+                new DateOnly(2026, 12, 31))
         }).GetAwaiter().GetResult();
         Assert(uploaded.Revision == 2 && uploaded.Cursor == 6 &&
-               uploaded.StartTime == new TimeOnly(9, 30),
+               uploaded.StartTime == new TimeOnly(9, 30) &&
+               uploaded.Recurrence is
+               { Frequency: RecurrenceFrequency.Weekly, Interval: 2 } &&
+               uploaded.Recurrence.DaysOfWeek?.SequenceEqual(
+                   [DayOfWeek.Monday, DayOfWeek.Friday]) == true &&
+               uploaded.Recurrence.Until == new DateOnly(2026, 12, 31),
             "v2 일정 저장 응답을 CalendarItem으로 변환하지 못했습니다.");
 
         CalendarSyncPage page = remote.PullAsync(6).GetAwaiter().GetResult();
         Assert(page.NextCursor == 8 && page.Items.Single().Title ==
                "다른 환경 일정" && page.Items.Single().Cursor == 7 &&
+               page.Items.Single().Recurrence?.Frequency ==
+                   RecurrenceFrequency.Monthly &&
                page.Decorations.Single().Cursor == 8,
             "v2 통합 커서 응답을 일정과 날짜 장식으로 분리하지 못했습니다.");
         Assert(requests[0].StartsWith("PUT /v2/calendar-items/") &&
                requests[0].Contains("\"color\":\"#0041E6\"") &&
+               requests[0].Contains("\"frequency\":\"weekly\"") &&
+               requests[0].Contains("\"daysOfWeek\":[1,5]") &&
                requests[1] == "GET /v2/sync?after=6&limit=500 ",
             "v2 원격 요청 경로나 일정 payload가 잘못되었습니다.");
     }

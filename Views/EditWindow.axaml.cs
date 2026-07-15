@@ -74,10 +74,19 @@ public partial class EditWindow : Window
         RoutedEventArgs eventArgs)
     {
         if ((sender as Control)?.DataContext is not CalendarItem item) return;
-        bool confirmed = await ConfirmAsync("일정을 삭제할까요?",
-            $"‘{item.Title}’ 일정을 삭제합니다. 이 작업은 동기화된 모든 환경에 " +
-            "반영됩니다.", "삭제", true);
+        string scope = item.HasSeriesScope ? "전체 시리즈" : "일정";
+        bool confirmed = await ConfirmAsync($"{scope}를 삭제할까요?",
+            $"‘{item.Title}’ {scope}를 삭제합니다. 이 작업은 동기화된 모든 " +
+            "환경에 반영됩니다.", "삭제", true);
         if (confirmed) await ViewModel.DeleteAsync(item);
+    }
+
+    private void SeriesMode_OnClick(object? sender,
+        RoutedEventArgs eventArgs)
+    {
+        if ((sender as Control)?.Tag is string value &&
+            Enum.TryParse(value, out CalendarEditMode mode))
+            ViewModel.Draft.SetMode(mode);
     }
 
     private void PresetTime_OnClick(object? sender, RoutedEventArgs eventArgs)
