@@ -106,6 +106,13 @@ const routes: FastifyPluginAsync = async app => {
       return reply.code(400).send({
         message: '매주 반복은 한 개 이상의 요일이 필요합니다.'
       })
+    if (body.kind === 'anniversary' && (body.completed ||
+        body.recurrence?.frequency !== 'yearly' ||
+        body.recurrence.interval !== 1 || body.recurrence.until != null ||
+        body.recurrence.count != null))
+      return reply.code(400).send({
+        message: '기념일은 완료되지 않은 무기한 연간 반복 일정이어야 합니다.'
+      })
     if (!hasAccessibleTextContrast(body.color))
       return reply.code(400).send({
         message: '일정 텍스트 색상은 중립 배경에서 4.5:1 이상의 대비가 필요합니다.'

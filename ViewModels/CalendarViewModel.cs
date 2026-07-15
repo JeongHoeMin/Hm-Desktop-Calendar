@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -115,33 +116,48 @@ public sealed partial class CalendarViewModel : ViewModelBase
         {
             CalendarMonth month = _month;
             var dates = month.GetDates();
-            var occurrences = await _repository.GetOccurrencesByRangeAsync(
-                dates[0], dates[^1]);
+            Task<IReadOnlyList<CalendarOccurrence>> occurrenceTask =
+                _repository.GetOccurrencesByRangeAsync(dates[0], dates[^1]);
+            Task<IReadOnlyList<DateCellDecoration>> decorationTask =
+                _repository.GetDecorationsByRangeAsync(dates[0], dates[^1]);
+            await Task.WhenAll(occurrenceTask, decorationTask);
+            IReadOnlyList<CalendarOccurrence> occurrences =
+                await occurrenceTask;
+            var backgrounds = (await decorationTask)
+                .Where(item => item.Kind == DateCellDecorationKind.Highlight)
+                .GroupBy(item => item.Date)
+                .ToDictionary(group => group.Key,
+                    group => group.OrderByDescending(item => item.UpdatedAt)
+                        .First().Color);
             var snapshot = new System.Collections.Generic.List<CalendarDayViewModel>();
             foreach (DateOnly date in dates)
             {
                 var dateItems = occurrences
-                    .Where(occurrence => occurrence.Date == date &&
-                        occurrence.Item.Kind == CalendarItemKind.Schedule)
+                    .Where(occurrence => occurrence.Date == date)
                     .Select(occurrence => occurrence.Item)
-                    .OrderBy(item => item.IsCompleted)
+                    .OrderByDescending(item => item.IsAnniversary)
+                    .ThenBy(item => item.IsCompleted)
                     .ThenBy(item => item.StartTime)
                     .ThenBy(item => item.Title)
                     .ToArray();
-                int incompleteCount = dateItems.Count(item => !item.IsCompleted);
-                int completedCount = dateItems.Length - incompleteCount;
+                CalendarItem[] schedules = dateItems
+                    .Where(item => !item.IsAnniversary).ToArray();
+                int incompleteCount = schedules.Count(item => !item.IsCompleted);
+                int completedCount = schedules.Length - incompleteCount;
                 var taskRows = dateItems.Select(item =>
                     new CalendarTaskPreviewViewModel(
-                        item.StartTime is { } time
+                        item.IsAnniversary ? string.Empty : item.StartTime is { } time
                             ? $"{time:HH:mm}" : string.Empty,
-                        item.Title, item.IsCompleted, item.Color)).ToArray();
+                        item.Title, item.IsCompleted, item.Color,
+                        item.IsAnniversary)).ToArray();
                 snapshot.Add(new CalendarDayViewModel(
                     date,
                     date.Month == month.FirstDay.Month,
                     incompleteCount,
                     completedCount,
                     taskRows,
-                    _taskRowCapacity));
+                    _taskRowCapacity,
+                    backgrounds.GetValueOrDefault(date)));
             }
             await _updateUi(() =>
             {
@@ -160,7 +176,8 @@ public sealed partial class CalendarViewModel : ViewModelBase
                         CalendarDayViewModel source = snapshot[index];
                         Days[index].Update(source.Date, source.IsCurrentMonth,
                             source.IncompleteCount, source.CompletedCount,
-                            source.AllTasks);
+                            source.AllTasks,
+                            backgrounds.GetValueOrDefault(source.Date));
                     }
                 }
                 DisplayMonth = month.DisplayName;

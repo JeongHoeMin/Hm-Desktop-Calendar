@@ -36,7 +36,7 @@ public partial class EditWindow : Window
 
     public async Task ShowDateAsync(DateOnly date)
     {
-        if (ViewModel.Draft.HasUnsavedChanges &&
+        if (ViewModel.HasUnsavedChanges &&
             !await ConfirmDiscardAsync()) return;
         await ViewModel.LoadDateAsync(date, true);
     }
@@ -99,9 +99,22 @@ public partial class EditWindow : Window
             ViewModel.Draft.SetPaletteColor(color);
     }
 
+    private void BackgroundPaletteColor_OnClick(object? sender,
+        RoutedEventArgs eventArgs)
+    {
+        if ((sender as Button)?.Tag is string color)
+            ViewModel.Background.SetPaletteColor(color);
+    }
+
+    private void BackgroundReset_OnClick(object? sender,
+        RoutedEventArgs eventArgs) => ViewModel.Background.Clear();
+
+    private async void BackgroundSave_OnClick(object? sender,
+        RoutedEventArgs eventArgs) => await ViewModel.SaveBackgroundAsync();
+
     private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)
     {
-        if (_allowClose || !ViewModel.Draft.HasUnsavedChanges) return;
+        if (_allowClose || !ViewModel.HasUnsavedChanges) return;
         eventArgs.Cancel = true;
         if (_promptOpen) return;
         _promptOpen = true;

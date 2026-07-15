@@ -64,24 +64,34 @@
                     AttachedToVisualTree="Day_OnAttachedToVisualTree"
                     DetachedFromVisualTree="Day_OnDetachedFromVisualTree">
               <Grid RowDefinitions="18,*">
+                <Border Grid.RowSpan="2" Background="{Binding CellBackgroundBrush}"
+                        CornerRadius="5" IsHitTestVisible="False" />
                 <Grid ColumnDefinitions="Auto,*">
                   <TextBlock Text="{Binding DayText}" FontSize="14" FontWeight="SemiBold"
+                             Foreground="{Binding CellForegroundBrush}"
                              VerticalAlignment="Center"/>
                   <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
                               HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBlock Text="{Binding IncompleteText}" IsVisible="{Binding HasIncomplete}"
-                               Classes="status-warning" FontSize="9.5" FontWeight="SemiBold"/>
+                               Foreground="{Binding CellForegroundBrush}"
+                               FontSize="9.5" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding CompletedText}" IsVisible="{Binding HasCompleted}"
-                               Classes="schedule-more" FontSize="9.5"/>
+                               Foreground="{Binding CellForegroundBrush}" FontSize="9.5"/>
                   </StackPanel>
                 </Grid>
                 <StackPanel Grid.Row="1" Spacing="0">
                   <ItemsControl ItemsSource="{Binding VisibleTasks}">
                     <ItemsControl.ItemTemplate><DataTemplate>
-                      <Grid Height="16" ColumnDefinitions="36,*" Opacity="{Binding Opacity}">
+                      <Grid Height="16" ColumnDefinitions="36,Auto,4,*" Opacity="{Binding Opacity}">
                         <TextBlock Text="{Binding TimeText}" FontSize="10" FontWeight="Bold"
                                    Classes="schedule-time" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="11"
+                        <Border Grid.Column="1" IsVisible="{Binding IsAnniversary}"
+                                Background="#E8F1FF" CornerRadius="4" Padding="4,0"
+                                VerticalAlignment="Center">
+                          <TextBlock Text="{Binding BadgeText}" Foreground="#0041E6"
+                                     FontSize="9" FontWeight="Bold"/>
+                        </Border>
+                        <TextBlock Grid.Column="3" Text="{Binding Title}" FontSize="11"
                                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                    Foreground="{Binding TextBrush}"
                                    TextDecorations="{Binding TitleDecorations}"

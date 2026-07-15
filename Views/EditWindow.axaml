@@ -41,9 +41,17 @@
                       <Border Background="{Binding Color}" CornerRadius="2"
                               Grid.RowSpan="3" />
                       <Grid Grid.Column="2" ColumnDefinitions="*,Auto">
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                   TextTrimming="CharacterEllipsis" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Border IsVisible="{Binding IsAnniversary}"
+                                  Background="#E8F1FF" CornerRadius="5" Padding="5,1">
+                            <TextBlock Text="기념일" Foreground="#0041E6"
+                                       FontSize="10" FontWeight="Bold" />
+                          </Border>
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
                         <CheckBox Grid.Column="1" IsChecked="{Binding IsCompleted}"
+                                  IsVisible="{Binding !IsAnniversary}"
                                   IsHitTestVisible="False" Focusable="False"
                                   ToolTip.Tip="완료 상태" />
                       </Grid>
@@ -77,6 +85,61 @@
         <ScrollViewer x:Name="EditorFormScroll"
                       VerticalScrollBarVisibility="Auto">
           <StackPanel Spacing="16">
+            <Border Padding="14" Background="{Binding Background.PreviewBackgroundBrush}"
+                    BorderBrush="{DynamicResource SocarBorderBrush}"
+                    BorderThickness="1" CornerRadius="10">
+              <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="날짜 셀 배경" FontWeight="SemiBold"
+                               Foreground="{Binding Background.PreviewForegroundBrush}" />
+                    <TextBlock Text="이 날짜의 배경은 로그인한 모든 환경에 동기화됩니다."
+                               FontSize="11"
+                               Foreground="{Binding Background.PreviewForegroundBrush}" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="15" FontSize="20"
+                             FontWeight="Bold"
+                             Foreground="{Binding Background.PreviewForegroundBrush}" />
+                </Grid>
+                <WrapPanel Orientation="Horizontal">
+                  <Button Tag="#FFF3BF" Background="#FFF3BF" Width="32" Height="32"
+                          MinWidth="32" MinHeight="32" Padding="0" Margin="0,0,6,0"
+                          ToolTip.Tip="레몬" Click="BackgroundPaletteColor_OnClick" />
+                  <Button Tag="#FFD8A8" Background="#FFD8A8" Width="32" Height="32"
+                          MinWidth="32" MinHeight="32" Padding="0" Margin="0,0,6,0"
+                          ToolTip.Tip="살구" Click="BackgroundPaletteColor_OnClick" />
+                  <Button Tag="#D3F9D8" Background="#D3F9D8" Width="32" Height="32"
+                          MinWidth="32" MinHeight="32" Padding="0" Margin="0,0,6,0"
+                          ToolTip.Tip="민트" Click="BackgroundPaletteColor_OnClick" />
+                  <Button Tag="#D0EBFF" Background="#D0EBFF" Width="32" Height="32"
+                          MinWidth="32" MinHeight="32" Padding="0" Margin="0,0,6,0"
+                          ToolTip.Tip="스카이" Click="BackgroundPaletteColor_OnClick" />
+                  <Button Tag="#E5DBFF" Background="#E5DBFF" Width="32" Height="32"
+                          MinWidth="32" MinHeight="32" Padding="0" Margin="0,0,6,0"
+                          ToolTip.Tip="라일락" Click="BackgroundPaletteColor_OnClick" />
+                  <Button Tag="#343A40" Background="#343A40" Width="32" Height="32"
+                          MinWidth="32" MinHeight="32" Padding="0"
+                          ToolTip.Tip="차콜" Click="BackgroundPaletteColor_OnClick" />
+                </WrapPanel>
+                <StackPanel Spacing="6">
+                  <TextBox Text="{Binding Background.Color, Mode=TwoWay,
+                                          UpdateSourceTrigger=PropertyChanged}"
+                           PlaceholderText="#RRGGBB" MaxLength="7" />
+                  <StackPanel Orientation="Horizontal" Spacing="8"
+                              HorizontalAlignment="Right">
+                    <Button Content="초기화" Classes="ghost"
+                            Click="BackgroundReset_OnClick" />
+                    <Button Content="배경 적용" Classes="secondary"
+                            IsEnabled="{Binding Background.CanSave}"
+                            Click="BackgroundSave_OnClick" />
+                  </StackPanel>
+                </StackPanel>
+                <TextBlock Text="{Binding Background.ValidationMessage}"
+                           IsVisible="{Binding Background.HasValidationError}"
+                           Classes="status-warning" />
+              </StackPanel>
+            </Border>
+
             <StackPanel Spacing="2">
               <TextBlock Text="{Binding Draft.FormTitle}" FontSize="18"
                          FontWeight="SemiBold" />
@@ -90,6 +153,10 @@
                                       UpdateSourceTrigger=PropertyChanged}"
                        PlaceholderText="일정 제목을 입력하세요" MaxLength="500" />
             </StackPanel>
+
+            <CheckBox Content="기념일 · 매년 반복"
+                      IsChecked="{Binding Draft.IsAnniversary, Mode=TwoWay}"
+                      ToolTip.Tip="기념일은 완료 상태 없이 매년 같은 날짜에 표시됩니다." />
 
             <StackPanel Spacing="8">
               <TextBlock Text="시간" FontWeight="SemiBold" />
@@ -125,7 +192,7 @@
             </StackPanel>
 
             <CheckBox Content="완료된 일정" IsChecked="{Binding Draft.IsCompleted,
-                      Mode=TwoWay}" />
+                      Mode=TwoWay}" IsVisible="{Binding Draft.IsSchedule}" />
 
             <StackPanel Spacing="8">
               <TextBlock Text="텍스트 색상" FontWeight="SemiBold" />

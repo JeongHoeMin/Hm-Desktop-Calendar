@@ -22,23 +22,31 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     private string _originalNotes = string.Empty;
     private bool _originalCompleted;
     private string _originalColor = DefaultTextColor;
+    private bool _originalAnniversary;
 
     [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private TimeSpan? _timeValue;
     [ObservableProperty] private string _notes = string.Empty;
     [ObservableProperty] private bool _isCompleted;
     [ObservableProperty] private string _color = DefaultTextColor;
+    [ObservableProperty] private bool _isAnniversary;
 
     public Guid? SourceId => _source?.Id;
     public bool IsEditing => _source is not null;
-    public string FormTitle => IsEditing ? "일정 수정" : "새 일정";
-    public string SaveButtonText => IsEditing ? "변경 저장" : "일정 추가";
+    public string FormTitle => IsEditing
+        ? IsAnniversary ? "기념일 수정" : "일정 수정"
+        : IsAnniversary ? "새 기념일" : "새 일정";
+    public string SaveButtonText => IsEditing ? "변경 저장" :
+        IsAnniversary ? "기념일 추가" : "일정 추가";
+    public bool IsSchedule => !IsAnniversary;
     public bool HasUnsavedChanges =>
         !string.Equals(Title, _originalTitle, StringComparison.Ordinal) ||
         TimeValue != _originalTime ||
         !string.Equals(Notes, _originalNotes, StringComparison.Ordinal) ||
         IsCompleted != _originalCompleted ||
-        !string.Equals(Color, _originalColor, StringComparison.OrdinalIgnoreCase);
+        !string.Equals(Color, _originalColor,
+            StringComparison.OrdinalIgnoreCase) ||
+        IsAnniversary != _originalAnniversary;
     public TextColorValidation ColorValidation =>
         CalendarTextColor.Validate(Color);
     public string ValidationMessage
@@ -79,7 +87,7 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         _source = null;
         _date = date;
         LoadValues(string.Empty, null, string.Empty, false,
-            DefaultTextColor);
+            DefaultTextColor, false);
     }
 
     public void BeginEdit(CalendarItem source)
@@ -88,7 +96,7 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         _source = Clone(source);
         _date = source.StartDate;
         LoadValues(source.Title, source.StartTime?.ToTimeSpan(), source.Notes,
-            source.IsCompleted, source.Color);
+            source.IsCompleted, source.Color, source.IsAnniversary);
     }
 
     public void SetPaletteColor(string color) => Color = color;
@@ -104,12 +112,18 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
             StartDate = _date,
             EndDate = _date
         } : Clone(_source);
+        bool wasAnniversary = item.IsAnniversary;
         item.Title = Title.Trim();
         item.Notes = Notes.Trim();
         item.StartTime = TimeValue is { } time
             ? TimeOnly.FromTimeSpan(time) : null;
         item.IsAllDay = item.StartTime is null;
-        item.IsCompleted = IsCompleted;
+        item.Kind = IsAnniversary ? CalendarItemKind.Anniversary :
+            CalendarItemKind.Schedule;
+        item.IsCompleted = IsAnniversary ? false : IsCompleted;
+        item.Recurrence = IsAnniversary
+            ? new RecurrenceRule(RecurrenceFrequency.Yearly)
+            : wasAnniversary ? null : item.Recurrence;
         item.Color = color.NormalizedColor;
         return item;
     }
@@ -119,9 +133,17 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     partial void OnNotesChanged(string value) => NotifyStateChanged();
     partial void OnIsCompletedChanged(bool value) => NotifyStateChanged();
     partial void OnColorChanged(string value) => NotifyStateChanged();
+    partial void OnIsAnniversaryChanged(bool value)
+    {
+        if (value) IsCompleted = false;
+        NotifyStateChanged();
+        OnPropertyChanged(nameof(FormTitle));
+        OnPropertyChanged(nameof(SaveButtonText));
+        OnPropertyChanged(nameof(IsSchedule));
+    }
 
     private void LoadValues(string title, TimeSpan? time, string notes,
-        bool completed, string color)
+        bool completed, string color, bool anniversary)
     {
         _loading = true;
         Title = _originalTitle = title;
@@ -129,6 +151,7 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         Notes = _originalNotes = notes;
         IsCompleted = _originalCompleted = completed;
         Color = _originalColor = color;
+        IsAnniversary = _originalAnniversary = anniversary;
         _loading = false;
         NotifyStateChanged();
         OnPropertyChanged(nameof(SourceId));
@@ -176,6 +199,97 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     };
 }
 
+public sealed partial class CalendarDateBackgroundViewModel : ObservableObject
+{
+    private DateCellDecoration? _source;
+    private DateOnly _date;
+    private bool _loading;
+    private string _originalColor = string.Empty;
+
+    [ObservableProperty] private string _color = string.Empty;
+
+    public Guid? SourceId => _source?.Id;
+    public bool HasBackground => !string.IsNullOrWhiteSpace(Color);
+    public bool HasUnsavedChanges => !string.Equals(Color, _originalColor,
+        StringComparison.OrdinalIgnoreCase);
+    public CellColorValidation ColorValidation => HasBackground
+        ? CalendarCellColor.Validate(Color)
+        : new CellColorValidation(true, string.Empty, string.Empty);
+    public string ValidationMessage => ColorValidation.Message;
+    public bool HasValidationError => !ColorValidation.IsValid;
+    public bool CanSave => HasUnsavedChanges && !HasValidationError;
+    public IBrush PreviewBackgroundBrush => HasBackground &&
+        ColorValidation.IsValid
+            ? new SolidColorBrush(Avalonia.Media.Color.Parse(
+                ColorValidation.NormalizedColor))
+            : Brushes.White;
+    public IBrush PreviewForegroundBrush => HasBackground &&
+        ColorValidation.IsValid
+            ? new SolidColorBrush(Avalonia.Media.Color.Parse(
+                CalendarCellColor.GetForeground(
+                    ColorValidation.NormalizedColor)))
+            : Brushes.Black;
+
+    public void Begin(DateOnly date, DateCellDecoration? source)
+    {
+        _date = date;
+        _source = source is null ? null : Clone(source);
+        _loading = true;
+        Color = _originalColor = source?.Color ?? string.Empty;
+        _loading = false;
+        NotifyStateChanged();
+        OnPropertyChanged(nameof(SourceId));
+    }
+
+    public void SetPaletteColor(string color) => Color = color;
+    public void Clear() => Color = string.Empty;
+
+    public DateCellDecoration CreateDecoration()
+    {
+        if (!HasBackground || !ColorValidation.IsValid)
+            throw new ArgumentException(HasBackground
+                ? ValidationMessage : "배경색을 입력하세요.");
+        return new DateCellDecoration
+        {
+            Id = _source?.Id ?? CalendarCellColor.GetDecorationId(_date),
+            Date = _date,
+            Kind = DateCellDecorationKind.Highlight,
+            Color = ColorValidation.NormalizedColor,
+            Label = string.Empty
+        };
+    }
+
+    public void Accept(DateCellDecoration? source) => Begin(_date, source);
+
+    partial void OnColorChanged(string value) => NotifyStateChanged();
+
+    private void NotifyStateChanged()
+    {
+        if (_loading) return;
+        OnPropertyChanged(nameof(HasBackground));
+        OnPropertyChanged(nameof(HasUnsavedChanges));
+        OnPropertyChanged(nameof(ColorValidation));
+        OnPropertyChanged(nameof(ValidationMessage));
+        OnPropertyChanged(nameof(HasValidationError));
+        OnPropertyChanged(nameof(CanSave));
+        OnPropertyChanged(nameof(PreviewBackgroundBrush));
+        OnPropertyChanged(nameof(PreviewForegroundBrush));
+    }
+
+    private static DateCellDecoration Clone(DateCellDecoration item) => new()
+    {
+        Id = item.Id,
+        Date = item.Date,
+        Kind = item.Kind,
+        Color = item.Color,
+        Label = item.Label,
+        IsDeleted = item.IsDeleted,
+        Revision = item.Revision,
+        Cursor = item.Cursor,
+        UpdatedAt = item.UpdatedAt
+    };
+}
+
 public sealed partial class CalendarEditorViewModel : ViewModelBase, IDisposable
 {
     private readonly ICalendarRepository _repository;
@@ -188,9 +302,12 @@ public sealed partial class CalendarEditorViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty] private DateOnly _date;
     [ObservableProperty] private string _errorMessage = string.Empty;
-    public string DateTitle => $"{Date:yyyy년 M월 d일} 일정";
+    public string DateTitle => $"{Date:yyyy년 M월 d일} 일정과 기념일";
     public ObservableCollection<CalendarItem> Items { get; } = [];
     public CalendarEditorDraftViewModel Draft { get; } = new();
+    public CalendarDateBackgroundViewModel Background { get; } = new();
+    public bool HasUnsavedChanges => Draft.HasUnsavedChanges ||
+        Background.HasUnsavedChanges;
 
     public CalendarEditorViewModel(DateOnly date, ICalendarRepository repository)
         : this(date, repository, UpdateOnUiThreadAsync)
@@ -204,6 +321,7 @@ public sealed partial class CalendarEditorViewModel : ViewModelBase, IDisposable
         _repository = repository;
         _updateUi = updateUi;
         Draft.BeginNew(date);
+        Background.Begin(date, null);
         _repository.Changed += OnRepositoryChanged;
     }
 
@@ -217,21 +335,28 @@ public sealed partial class CalendarEditorViewModel : ViewModelBase, IDisposable
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (Draft.HasUnsavedChanges && !discardChanges) return false;
+        if (HasUnsavedChanges && !discardChanges) return false;
         long request = Interlocked.Increment(ref _loadRequest);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, _dispose.Token);
         await _loadGate.WaitAsync(linked.Token);
         try
         {
-            IReadOnlyList<CalendarOccurrence> occurrences = await _repository
+            Task<IReadOnlyList<CalendarOccurrence>> occurrenceTask = _repository
                 .GetOccurrencesByRangeAsync(date, date, linked.Token);
+            Task<IReadOnlyList<DateCellDecoration>> decorationTask = _repository
+                .GetDecorationsByRangeAsync(date, date, linked.Token);
+            await Task.WhenAll(occurrenceTask, decorationTask);
+            IReadOnlyList<CalendarOccurrence> occurrences = await occurrenceTask;
+            DateCellDecoration? background = (await decorationTask)
+                .Where(item => item.Kind == DateCellDecorationKind.Highlight)
+                .OrderByDescending(item => item.UpdatedAt)
+                .FirstOrDefault();
             CalendarItem[] items = occurrences
-                .Where(occurrence =>
-                    occurrence.Item.Kind == CalendarItemKind.Schedule)
                 .GroupBy(occurrence => occurrence.SeriesId)
                 .Select(group => group.First().Item)
-                .OrderBy(item => item.IsCompleted)
+                .OrderByDescending(item => item.IsAnniversary)
+                .ThenBy(item => item.IsCompleted)
                 .ThenBy(item => item.StartTime)
                 .ThenBy(item => item.Title, StringComparer.CurrentCulture)
                 .ToArray();
@@ -243,6 +368,7 @@ public sealed partial class CalendarEditorViewModel : ViewModelBase, IDisposable
                 Items.Clear();
                 foreach (CalendarItem item in items) Items.Add(item);
                 Draft.BeginNew(date);
+                Background.Begin(date, background);
                 ErrorMessage = string.Empty;
             });
             return true;
@@ -281,6 +407,20 @@ public sealed partial class CalendarEditorViewModel : ViewModelBase, IDisposable
         await LoadDateAsync(Date, true, _dispose.Token);
     });
 
+    public Task<bool> SaveBackgroundAsync() => ExecuteAsync(async () =>
+    {
+        if (!Background.HasBackground)
+        {
+            if (Background.SourceId is { } id)
+                await _repository.DeleteDecorationAsync(id, _dispose.Token);
+            Background.Accept(null);
+            return;
+        }
+        DateCellDecoration decoration = Background.CreateDecoration();
+        await _repository.UpsertDecorationAsync(decoration, _dispose.Token);
+        Background.Accept(decoration);
+    });
+
     public Task<bool> DeleteAsync(CalendarItem item) => ExecuteAsync(async () =>
     {
         await _repository.DeleteItemAsync(item.Id, _dispose.Token);
@@ -310,7 +450,7 @@ public sealed partial class CalendarEditorViewModel : ViewModelBase, IDisposable
 
     private void OnRepositoryChanged(object? sender, EventArgs eventArgs)
     {
-        if (_disposed || Draft.HasUnsavedChanges ||
+        if (_disposed || HasUnsavedChanges ||
             Volatile.Read(ref _localOperation) != 0) return;
         _ = ReloadSafelyAsync();
     }
