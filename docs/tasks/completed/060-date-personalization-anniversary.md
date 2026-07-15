@@ -1,7 +1,7 @@
 # 060 날짜 셀 개인화와 기념일
 
 ## 상태
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/date-personalization-anniversary`
 
 ## 목표
@@ -51,5 +51,5 @@
   `docs/screenshots/060-main-background-anniversary.png`에 기록했다.
 
 ## 작업 결과
-- 커밋: 미정
-- PR: 미정
+- 커밋: `26490d9`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/9
