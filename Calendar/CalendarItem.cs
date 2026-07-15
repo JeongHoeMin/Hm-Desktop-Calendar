@@ -25,7 +25,8 @@ public sealed record RecurrenceRule(
     DateOnly? Until = null,
     int? Count = null);
 
-public sealed record CalendarReminder(int MinutesBefore);
+public sealed record CalendarReminder(int MinutesBefore,
+    TimeOnly? TimeOfDay = null);
 
 public sealed class CalendarItem
 {

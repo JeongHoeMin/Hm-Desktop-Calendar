@@ -284,6 +284,48 @@
               </WrapPanel>
             </StackPanel>
 
+            <Border Padding="12" Background="#F8F9FC"
+                    BorderBrush="{DynamicResource SocarBorderBrush}"
+                    BorderThickness="1" CornerRadius="10">
+              <StackPanel Spacing="10">
+                <CheckBox Content="알림 사용"
+                          IsChecked="{Binding Draft.ReminderEnabled, Mode=TwoWay}" />
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding Draft.ReminderEnabled}">
+                  <TextBlock Text="알림 시점" FontWeight="SemiBold" />
+                  <ComboBox SelectedIndex="{Binding Draft.ReminderPresetIndex,
+                                             Mode=TwoWay}">
+                    <ComboBoxItem Content="정시" />
+                    <ComboBoxItem Content="5분 전" />
+                    <ComboBoxItem Content="15분 전" />
+                    <ComboBoxItem Content="30분 전" />
+                    <ComboBoxItem Content="1시간 전" />
+                    <ComboBoxItem Content="1일 전" />
+                    <ComboBoxItem Content="사용자 지정" />
+                  </ComboBox>
+                  <StackPanel Spacing="6"
+                              IsVisible="{Binding Draft.IsCustomReminder}">
+                    <TextBlock Text="몇 분 전" FontWeight="SemiBold" />
+                    <NumericUpDown Value="{Binding Draft.CustomReminderMinutes,
+                                           Mode=TwoWay}"
+                                   Minimum="0" Maximum="525600" Increment="1"
+                                   FormatString="0" />
+                  </StackPanel>
+                  <StackPanel Spacing="6"
+                              IsVisible="{Binding Draft.NeedsReminderTime}">
+                    <TextBlock Text="시간 없는 일정의 알림 시각"
+                               FontWeight="SemiBold" />
+                    <TimePicker SelectedTime="{Binding Draft.ReminderTimeValue,
+                                                Mode=TwoWay}"
+                                ClockIdentifier="24HourClock" MinuteIncrement="1"
+                                HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Draft.ReminderSummary}"
+                             Classes="caption" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
             <StackPanel Spacing="6">
               <TextBlock Text="메모" FontWeight="SemiBold" />
               <TextBox Text="{Binding Draft.Notes, Mode=TwoWay,

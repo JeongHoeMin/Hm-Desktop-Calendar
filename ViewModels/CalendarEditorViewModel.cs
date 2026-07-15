@@ -30,6 +30,8 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     private bool _originalCompleted;
     private string _originalColor = DefaultTextColor;
     private SeriesEditorState _originalSeriesState;
+    private ReminderEditorState _originalReminderState;
+    private bool _sourceHadTime;
 
     [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private TimeSpan? _timeValue;
@@ -50,6 +52,10 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     [ObservableProperty] private bool _saturday;
     [ObservableProperty] private bool _hasRecurrenceUntil;
     [ObservableProperty] private DateTimeOffset? _recurrenceUntilValue;
+    [ObservableProperty] private bool _reminderEnabled;
+    [ObservableProperty] private int _reminderPresetIndex = 2;
+    [ObservableProperty] private decimal _customReminderMinutes = 15;
+    [ObservableProperty] private TimeSpan? _reminderTimeValue;
 
     public Guid? SourceId => _source?.Id;
     public bool IsEditing => _source is not null;
@@ -85,6 +91,12 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
             CalendarEditMode.Recurring => FormatRecurrenceSummary(),
             _ => string.Empty
         };
+    public bool IsCustomReminder => ReminderEnabled && ReminderPresetIndex == 6;
+    public bool NeedsReminderTime => ReminderEnabled && TimeValue is null;
+    public string ReminderSummary => !ReminderEnabled ? "알림 없음" :
+        $"{GetReminderMinutes()}분 전" +
+        (NeedsReminderTime && ReminderTimeValue is { } time
+            ? $" · {time:hh\\:mm} 기준" : string.Empty);
     public bool HasUnsavedChanges =>
         !string.Equals(Title, _originalTitle, StringComparison.Ordinal) ||
         TimeValue != _originalTime ||
@@ -92,7 +104,8 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         IsCompleted != _originalCompleted ||
         !string.Equals(Color, _originalColor,
             StringComparison.OrdinalIgnoreCase) ||
-        CaptureSeriesState() != _originalSeriesState;
+        CaptureSeriesState() != _originalSeriesState ||
+        CaptureReminderState() != _originalReminderState;
     public TextColorValidation ColorValidation =>
         CalendarTextColor.Validate(Color);
     public string ValidationMessage
@@ -104,6 +117,18 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
                 return "제목은 500자 이하여야 합니다.";
             if (Notes.Length > 10000)
                 return "메모는 10,000자 이하여야 합니다.";
+            if (ReminderEnabled)
+            {
+                if (ReminderPresetIndex is < 0 or > 6)
+                    return "알림 시점을 선택하세요.";
+                if (IsCustomReminder && (CustomReminderMinutes < 0 ||
+                    CustomReminderMinutes > 525600 ||
+                    CustomReminderMinutes != decimal.Truncate(
+                        CustomReminderMinutes)))
+                    return "사용자 지정 알림은 0~525,600분 사이의 정수여야 합니다.";
+                if (NeedsReminderTime && ReminderTimeValue is null)
+                    return "시간 없는 일정의 알림 시각을 선택하세요.";
+            }
             if (IsRangeMode)
             {
                 if (EndDateValue is null) return "종료일을 선택하세요.";
@@ -218,11 +243,28 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
             item.Recurrence = null;
         }
         item.Color = color.NormalizedColor;
+        bool timeKindChanged = _source is not null &&
+            _sourceHadTime != item.StartTime.HasValue;
+        if (_source is null || timeKindChanged ||
+            CaptureReminderState() != _originalReminderState)
+        {
+            item.Reminders = ReminderEnabled
+                ? [new CalendarReminder(GetReminderMinutes(),
+                    item.StartTime is null && ReminderTimeValue is { } reminderTime
+                        ? TimeOnly.FromTimeSpan(reminderTime) : null)]
+                : [];
+        }
         return item;
     }
 
     partial void OnTitleChanged(string value) => NotifyStateChanged();
-    partial void OnTimeValueChanged(TimeSpan? value) => NotifyStateChanged();
+    partial void OnTimeValueChanged(TimeSpan? value)
+    {
+        if (!_loading && value is null && ReminderEnabled &&
+            ReminderTimeValue is null)
+            ReminderTimeValue = new TimeSpan(9, 0, 0);
+        NotifyReminderStateChanged();
+    }
     partial void OnNotesChanged(string value) => NotifyStateChanged();
     partial void OnIsCompletedChanged(bool value) => NotifyStateChanged();
     partial void OnColorChanged(string value) => NotifyStateChanged();
@@ -303,6 +345,19 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     partial void OnRecurrenceUntilValueChanged(DateTimeOffset? value) =>
         NotifySeriesStateChanged();
 
+    partial void OnReminderEnabledChanged(bool value)
+    {
+        if (!_loading && value && TimeValue is null && ReminderTimeValue is null)
+            ReminderTimeValue = new TimeSpan(9, 0, 0);
+        NotifyReminderStateChanged();
+    }
+    partial void OnReminderPresetIndexChanged(int value) =>
+        NotifyReminderStateChanged();
+    partial void OnCustomReminderMinutesChanged(decimal value) =>
+        NotifyReminderStateChanged();
+    partial void OnReminderTimeValueChanged(TimeSpan? value) =>
+        NotifyReminderStateChanged();
+
     public void SetMode(CalendarEditMode mode) => Mode = mode;
 
     private void LoadValues(string title, TimeSpan? time, string notes,
@@ -330,8 +385,15 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         HasRecurrenceUntil = recurrence?.Until is not null;
         RecurrenceUntilValue = recurrence?.Until is { } until
             ? ToDateTimeOffset(until) : null;
+        CalendarReminder? reminder = seriesSource?.Reminders.FirstOrDefault();
+        ReminderEnabled = reminder is not null;
+        ReminderPresetIndex = GetPresetIndex(reminder?.MinutesBefore ?? 15);
+        CustomReminderMinutes = reminder?.MinutesBefore ?? 15;
+        ReminderTimeValue = reminder?.TimeOfDay?.ToTimeSpan();
+        _sourceHadTime = seriesSource?.StartTime is not null;
         _loading = false;
         _originalSeriesState = CaptureSeriesState();
+        _originalReminderState = CaptureReminderState();
         NotifyStateChanged();
         OnPropertyChanged(nameof(SourceId));
         OnPropertyChanged(nameof(IsEditing));
@@ -354,6 +416,15 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
         OnPropertyChanged(nameof(PreviewTime));
         OnPropertyChanged(nameof(PreviewBrush));
         OnPropertyChanged(nameof(ContrastText));
+    }
+
+    private void NotifyReminderStateChanged()
+    {
+        if (_loading) return;
+        NotifyStateChanged();
+        OnPropertyChanged(nameof(IsCustomReminder));
+        OnPropertyChanged(nameof(NeedsReminderTime));
+        OnPropertyChanged(nameof(ReminderSummary));
     }
 
     private void NotifySeriesStateChanged()
@@ -465,6 +536,24 @@ public sealed partial class CalendarEditorDraftViewModel : ObservableObject
     private readonly record struct SeriesEditorState(bool IsAnniversary,
         CalendarEditMode Mode, DateOnly? EndDate, int FrequencyIndex,
         decimal Interval, int WeekdayMask, bool HasUntil, DateOnly? Until);
+
+    private ReminderEditorState CaptureReminderState() => new(ReminderEnabled,
+        ReminderPresetIndex, CustomReminderMinutes, ReminderTimeValue);
+
+    private int GetReminderMinutes() => ReminderPresetIndex switch
+    {
+        0 => 0, 1 => 5, 2 => 15, 3 => 30, 4 => 60, 5 => 1440,
+        6 => decimal.ToInt32(CustomReminderMinutes),
+        _ => 0
+    };
+
+    private static int GetPresetIndex(int minutes) => minutes switch
+    {
+        0 => 0, 5 => 1, 15 => 2, 30 => 3, 60 => 4, 1440 => 5, _ => 6
+    };
+
+    private readonly record struct ReminderEditorState(bool Enabled,
+        int PresetIndex, decimal CustomMinutes, TimeSpan? TimeOfDay);
 
     private static CalendarItem Clone(CalendarItem item) => new()
     {

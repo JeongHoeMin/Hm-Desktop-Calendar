@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HmDesktopCalendar.Views.ReminderWindow"
+        x:CompileBindings="False"
+        Width="420" Height="300" MinWidth="360" MinHeight="280"
+        Title="일정 알림" Topmost="True"
+        WindowStartupLocation="CenterScreen" CanResize="False">
+  <Border Margin="20" Classes="card" Padding="20">
+    <Grid RowDefinitions="Auto,12,*,16,Auto">
+      <StackPanel Spacing="5">
+        <TextBlock Text="일정 알림" FontSize="14" FontWeight="SemiBold"
+                   Foreground="#0041E6" />
+        <TextBlock Text="{Binding Notification.Item.Title}" FontSize="22"
+                   FontWeight="Bold" TextWrapping="Wrap" />
+      </StackPanel>
+      <StackPanel Grid.Row="2" Spacing="8">
+        <TextBlock Text="{Binding OccurrenceText}" FontWeight="SemiBold" />
+        <TextBlock Text="{Binding Notification.Item.Notes}" TextWrapping="Wrap"
+                   MaxHeight="72" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding StatusText}" Classes="caption" />
+      </StackPanel>
+      <StackPanel Grid.Row="4" Spacing="8">
+        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Content="5분 후" Tag="5" Classes="ghost" Margin="0,0,6,0"
+                  Click="Snooze_OnClick" />
+          <Button Content="10분 후" Tag="10" Classes="ghost" Margin="0,0,6,0"
+                  Click="Snooze_OnClick" />
+          <Button Content="30분 후" Tag="30" Classes="ghost"
+                  Click="Snooze_OnClick" />
+        </WrapPanel>
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Button Content="일정 수정" Classes="secondary"
+                  Click="Edit_OnClick" />
+          <Button Grid.Column="2" Content="확인" Classes="primary"
+                  Click="Acknowledge_OnClick" />
+        </Grid>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using HmDesktopCalendar.Authentication;
 using HmDesktopCalendar.Calendar;
 using HmDesktopCalendar.DesktopIntegration;
+using HmDesktopCalendar.Reminders;
 using HmDesktopCalendar.Todos;
 using HmDesktopCalendar.ViewModels;
 
@@ -63,7 +64,10 @@ internal static class Program
             ("달력은 날짜 배경과 기념일 배지를 함께 표시한다", CalendarPreviewShowsBackgroundAndAnniversary),
             ("서버 병합은 전송 전 로컬 변경을 보존한다", ServerMergePreservesPendingLocalChanges),
             ("v2 계정 범위는 익명 데이터만 최초 계정으로 이동한다", CalendarScopesStayIsolated),
-            ("v2 원격 클라이언트는 통합 일정 계약을 사용한다", RemoteCalendarClientUsesV2Contract)
+            ("v2 원격 클라이언트는 통합 일정 계약을 사용한다", RemoteCalendarClientUsesV2Contract),
+            ("알림 편집은 프리셋과 시간 없는 일정 기준 시각을 저장한다", ReminderEditorCreatesAnchors),
+            ("알림 저장소는 기준 시각과 허용 범위를 검증한다", ReminderRepositoryValidatesRules),
+            ("알림 스케줄러는 중복·다시 알림·기간 경계를 처리한다", ReminderSchedulerHandlesLifecycle)
         };
         int failures = 0;
         foreach (var test in tests)
@@ -178,7 +182,7 @@ internal static class Program
                 EndDate = new DateOnly(2026, 7, 15),
                 Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly,
                     2, [DayOfWeek.Wednesday]),
-                Reminders = [new CalendarReminder(30)]
+                Reminders = [new CalendarReminder(30, new TimeOnly(9, 0))]
             };
             var decoration = new DateCellDecoration
             {
@@ -1130,6 +1134,151 @@ internal static class Program
                requests[0].Contains("\"daysOfWeek\":[1,5]") &&
                requests[1] == "GET /v2/sync?after=6&limit=500 ",
             "v2 원격 요청 경로나 일정 payload가 잘못되었습니다.");
+    }
+
+    private static void ReminderEditorCreatesAnchors()
+    {
+        var draft = new CalendarEditorDraftViewModel();
+        draft.BeginNew(new DateOnly(2026, 7, 15));
+        draft.Title = "시간 없는 알림";
+        draft.ReminderEnabled = true;
+        draft.ReminderPresetIndex = 5;
+        draft.ReminderTimeValue = new TimeSpan(8, 30, 0);
+        CalendarItem item = draft.CreateItem();
+        Assert(item.Reminders.Single() == new CalendarReminder(1440,
+                   new TimeOnly(8, 30)),
+            "시간 없는 일정의 1일 전 알림 기준 시각을 저장하지 못했습니다.");
+
+        draft.TimeValue = new TimeSpan(10, 0, 0);
+        draft.ReminderPresetIndex = 6;
+        draft.CustomReminderMinutes = 90;
+        item = draft.CreateItem();
+        Assert(item.Reminders.Single() == new CalendarReminder(90),
+            "시간 있는 일정의 사용자 지정 알림을 시작 시각 기준으로 저장하지 못했습니다.");
+    }
+
+    private static void ReminderRepositoryValidatesRules() =>
+        WithTempDirectory(directory =>
+        {
+            using var repository = new LocalCalendarRepository(directory);
+            CalendarItem CreateItem() => new()
+            {
+                Title = "검증 일정",
+                StartDate = new DateOnly(2026, 7, 15),
+                EndDate = new DateOnly(2026, 7, 15)
+            };
+            CalendarItem allDay = CreateItem();
+            allDay.Reminders = [new CalendarReminder(15)];
+            AssertThrows<ArgumentException>(() => repository.UpsertItemAsync(
+                allDay).GetAwaiter().GetResult(),
+                "시간 없는 일정에서 알림 기준 시각 누락을 허용했습니다.");
+
+            CalendarItem timed = CreateItem();
+            timed.StartTime = new TimeOnly(9, 0);
+            timed.Reminders = [new CalendarReminder(15, new TimeOnly(8, 0))];
+            AssertThrows<ArgumentException>(() => repository.UpsertItemAsync(
+                timed).GetAwaiter().GetResult(),
+                "시간 있는 일정에 별도 알림 기준 시각을 허용했습니다.");
+
+            CalendarItem excessive = CreateItem();
+            excessive.StartTime = new TimeOnly(9, 0);
+            excessive.Reminders = [new CalendarReminder(525601)];
+            AssertThrows<ArgumentException>(() => repository.UpsertItemAsync(
+                excessive).GetAwaiter().GetResult(),
+                "최대 범위를 넘는 알림 간격을 허용했습니다.");
+        });
+
+    private static void ReminderSchedulerHandlesLifecycle() =>
+        WithTempDirectory(directory =>
+        {
+            using var repository = new LocalCalendarRepository(directory);
+            var state = new MemoryReminderStateStore();
+            var clock = new FakeReminderClock(new DateTimeOffset(
+                2026, 7, 15, 10, 0, 0, TimeSpan.Zero));
+            var scheduler = new ReminderScheduler(repository, state, clock,
+                () => "account", TimeZoneInfo.Utc);
+            repository.UpsertItemAsync(new CalendarItem
+            {
+                Title = "기간 일정",
+                StartDate = new DateOnly(2026, 7, 15),
+                EndDate = new DateOnly(2026, 7, 17),
+                StartTime = new TimeOnly(10, 0),
+                Reminders = [new CalendarReminder(0), new CalendarReminder(5),
+                    new CalendarReminder(15), new CalendarReminder(30),
+                    new CalendarReminder(60), new CalendarReminder(90),
+                    new CalendarReminder(1440)]
+            }).GetAwaiter().GetResult();
+            repository.UpsertItemAsync(new CalendarItem
+            {
+                Title = "시간 없는 일정",
+                StartDate = new DateOnly(2026, 7, 15),
+                EndDate = new DateOnly(2026, 7, 15),
+                Reminders = [new CalendarReminder(5, new TimeOnly(10, 5))]
+            }).GetAwaiter().GetResult();
+            repository.UpsertItemAsync(new CalendarItem
+            {
+                Title = "반복 일정",
+                StartDate = new DateOnly(2026, 7, 15),
+                EndDate = new DateOnly(2026, 7, 15),
+                StartTime = new TimeOnly(10, 0),
+                Recurrence = new RecurrenceRule(RecurrenceFrequency.Daily),
+                Reminders = [new CalendarReminder(0)]
+            }).GetAwaiter().GetResult();
+
+            IReadOnlyList<ReminderNotification> first = scheduler.ScanAsync()
+                .GetAwaiter().GetResult();
+            Assert(first.Count == 9 && first.Count(notification =>
+                       notification.Item.Title == "기간 일정") == 7 &&
+                   first.Count(notification =>
+                       notification.Item.Title == "반복 일정") == 1,
+                "프리셋·사용자 지정·반복 또는 기간 시작일 알림을 잘못 계산했습니다.");
+            Assert(scheduler.ScanAsync().GetAwaiter().GetResult().Count == 0,
+                "이미 표시한 알림을 다시 표시했습니다.");
+
+            ReminderNotification snoozed = first.Single(notification =>
+                notification.Item.Title == "시간 없는 일정");
+            scheduler.SnoozeAsync(snoozed, 5).GetAwaiter().GetResult();
+            clock.Now = clock.Now.AddMinutes(5);
+            IReadOnlyList<ReminderNotification> afterSnooze = scheduler.ScanAsync()
+                .GetAwaiter().GetResult();
+            Assert(afterSnooze.Count == 1 && afterSnooze[0].IsSnoozed,
+                "5분 다시 알림을 지정한 시각에 한 번 표시하지 못했습니다.");
+
+            repository.UpsertItemAsync(new CalendarItem
+            {
+                Title = "24시간 밖 알림",
+                StartDate = new DateOnly(2026, 7, 14),
+                EndDate = new DateOnly(2026, 7, 14),
+                StartTime = new TimeOnly(9, 59),
+                Reminders = [new CalendarReminder(0)]
+            }).GetAwaiter().GetResult();
+            Assert(scheduler.ScanAsync().GetAwaiter().GetResult().Count == 0,
+                "24시간보다 오래된 놓친 알림을 복구했습니다.");
+            scheduler.Start();
+            scheduler.StopAsync().GetAwaiter().GetResult();
+            scheduler.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        });
+
+    private sealed class FakeReminderClock(DateTimeOffset now) : IReminderClock
+    {
+        public DateTimeOffset Now { get; set; } = now;
+        public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) =>
+            Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+    }
+
+    private sealed class MemoryReminderStateStore : IReminderDeviceStateStore
+    {
+        private readonly Dictionary<string, ReminderDeviceState> _states = [];
+        public Task<IReadOnlyDictionary<string, ReminderDeviceState>> ReadAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, ReminderDeviceState>>(
+                new Dictionary<string, ReminderDeviceState>(_states));
+        public Task WriteAsync(string key, ReminderDeviceState state,
+            CancellationToken cancellationToken = default)
+        {
+            _states[key] = state;
+            return Task.CompletedTask;
+        }
     }
 
     private static Task ImmediateUpdate(Action update)
