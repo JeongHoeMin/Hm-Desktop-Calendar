@@ -6,7 +6,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/database/001_initial.sql','dist/database/001_initial.sql')\"",
+    "build": "tsc -p tsconfig.json && node -e \"const f=require('fs');f.mkdirSync('dist/database',{recursive:true});for(const x of f.readdirSync('src/database').filter(x=>x.endsWith('.sql')))f.copyFileSync('src/database/'+x,'dist/database/'+x)\"",
     "start": "node dist/index.js",
     "migrate": "tsx src/database/migrate.ts",
     "test": "vitest run"

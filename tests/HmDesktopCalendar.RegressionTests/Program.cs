@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using HmDesktopCalendar.Calendar;
 using HmDesktopCalendar.DesktopIntegration;
 using HmDesktopCalendar.Todos;
 using HmDesktopCalendar.ViewModels;
@@ -27,7 +30,11 @@ internal static class Program
             ("Explorer 재시작은 새 호스트에 정확히 재부착한다", ExplorerRestartReattaches),
             ("화면과 겹치는 음수 좌표는 복구하지 않는다", VisibleNegativeBoundsArePreserved),
             ("달력 ViewModel이 연도와 월을 독립적으로 이동한다", CalendarViewModelMovesPredictably),
-            ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess)
+            ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
+            ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
+            ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
+            ("로컬 캘린더 저장소는 계정 범위를 분리한다", CalendarAccountsAreIsolated),
+            ("일정과 날짜 장식은 tombstone과 커서를 보존한다", CalendarCrudPreservesSyncData)
         };
         int failures = 0;
         foreach (var test in tests)
@@ -40,6 +47,151 @@ internal static class Program
             }
         }
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void LegacyTodosAreImportedAtomically() =>
+        WithTempDirectory(directory =>
+        {
+            var id = Guid.NewGuid();
+            string legacyPath = Path.Combine(directory, "todos.json");
+            File.WriteAllText(legacyPath, JsonSerializer.Serialize(new[]
+            {
+                new TodoItem
+                {
+                    Id = id,
+                    Date = new DateOnly(2026, 7, 15),
+                    Title = "기존 할 일",
+                    Notes = "보존할 메모",
+                    Time = new TimeOnly(9, 30),
+                    IsCompleted = true,
+                    Revision = 7,
+                    Cursor = 11
+                }
+            }));
+
+            using var repository = new LocalCalendarRepository(directory);
+            IReadOnlyList<CalendarItem> items = repository
+                .GetItemsByRangeAsync(new DateOnly(2026, 7, 1),
+                    new DateOnly(2026, 7, 31)).GetAwaiter().GetResult();
+
+            Assert(items.Count == 1 && items[0].Id == id,
+                "기존 할 일을 가져오지 못했습니다.");
+            Assert(items[0].Title == "기존 할 일" &&
+                   items[0].Notes == "보존할 메모" &&
+                   items[0].StartTime == new TimeOnly(9, 30) &&
+                   items[0].IsCompleted,
+                "기존 할 일 필드가 손실되었습니다.");
+            Assert(items[0].Revision == 0 && items[0].Cursor == 0,
+                "v1 커서를 v2 동기화 상태로 잘못 가져왔습니다.");
+            Assert(File.Exists(legacyPath), "가져온 뒤 기존 파일이 삭제되었습니다.");
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(directory, "calendar-v2.json")));
+            Assert(document.RootElement.GetProperty("Version").GetInt32() == 2,
+                "v2 문서 버전이 기록되지 않았습니다.");
+        });
+
+    private static void FailedImportCanBeRetried() =>
+        WithTempDirectory(directory =>
+        {
+            string legacyPath = Path.Combine(directory, "todos.json");
+            File.WriteAllText(legacyPath, "{ broken json");
+            using var repository = new LocalCalendarRepository(directory);
+            bool failed = false;
+            try
+            {
+                repository.GetItemsByRangeAsync(DateOnly.MinValue,
+                    DateOnly.MaxValue).GetAwaiter().GetResult();
+            }
+            catch (JsonException) { failed = true; }
+            Assert(failed, "손상된 가져오기 원본을 성공으로 처리했습니다.");
+            Assert(!File.Exists(Path.Combine(directory, "calendar-v2.json")),
+                "실패한 가져오기가 불완전한 v2 문서를 남겼습니다.");
+
+            File.WriteAllText(legacyPath, "[]");
+            IReadOnlyList<CalendarItem> recovered = repository
+                .GetItemsByRangeAsync(DateOnly.MinValue, DateOnly.MaxValue)
+                .GetAwaiter().GetResult();
+            Assert(recovered.Count == 0 &&
+                   File.Exists(Path.Combine(directory, "calendar-v2.json")),
+                "원본 복구 후 가져오기를 재시도하지 못했습니다.");
+        });
+
+    private static void CalendarAccountsAreIsolated() =>
+        WithTempDirectory(directory =>
+        {
+            string firstDirectory = Path.Combine(directory, "accounts", "first");
+            string secondDirectory = Path.Combine(directory, "accounts", "second");
+            using var first = new LocalCalendarRepository(firstDirectory);
+            using var second = new LocalCalendarRepository(secondDirectory);
+            first.UpsertItemAsync(new CalendarItem
+            {
+                Title = "첫 계정",
+                StartDate = new DateOnly(2026, 7, 15),
+                EndDate = new DateOnly(2026, 7, 15)
+            }).GetAwaiter().GetResult();
+
+            Assert(first.GetItemsByRangeAsync(DateOnly.MinValue,
+                       DateOnly.MaxValue).GetAwaiter().GetResult().Count == 1,
+                "첫 계정 데이터가 저장되지 않았습니다.");
+            Assert(second.GetItemsByRangeAsync(DateOnly.MinValue,
+                       DateOnly.MaxValue).GetAwaiter().GetResult().Count == 0,
+                "다른 계정에 일정 데이터가 섞였습니다.");
+        });
+
+    private static void CalendarCrudPreservesSyncData() =>
+        WithTempDirectory(directory =>
+        {
+            using var repository = new LocalCalendarRepository(directory);
+            var item = new CalendarItem
+            {
+                Title = "반복 일정",
+                StartDate = new DateOnly(2026, 7, 15),
+                EndDate = new DateOnly(2026, 7, 16),
+                Recurrence = new RecurrenceRule(RecurrenceFrequency.Weekly,
+                    2, [DayOfWeek.Wednesday]),
+                Reminders = [new CalendarReminder(30)]
+            };
+            var decoration = new DateCellDecoration
+            {
+                Date = new DateOnly(2026, 7, 15),
+                Kind = DateCellDecorationKind.ColorDot,
+                Color = "#FF0000",
+                Label = "휴일"
+            };
+            repository.UpsertItemAsync(item).GetAwaiter().GetResult();
+            repository.UpsertDecorationAsync(decoration).GetAwaiter().GetResult();
+            repository.SetSyncStateAsync(new SyncState(42,
+                new DateTimeOffset(2026, 7, 15, 1, 2, 3, TimeSpan.Zero)))
+                .GetAwaiter().GetResult();
+            Assert(repository.GetDecorationsByRangeAsync(DateOnly.MinValue,
+                       DateOnly.MaxValue).GetAwaiter().GetResult().Count == 1,
+                "날짜 장식을 조회하지 못했습니다.");
+            Assert(repository.GetSyncStateAsync().GetAwaiter().GetResult()
+                       .Cursor == 42,
+                "통합 커서를 보존하지 못했습니다.");
+
+            repository.DeleteItemAsync(item.Id).GetAwaiter().GetResult();
+            repository.DeleteDecorationAsync(decoration.Id).GetAwaiter().GetResult();
+            Assert(repository.GetItemsByRangeAsync(DateOnly.MinValue,
+                       DateOnly.MaxValue).GetAwaiter().GetResult().Count == 0,
+                "삭제된 일정이 일반 조회에 노출되었습니다.");
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(directory, "calendar-v2.json")));
+            Assert(document.RootElement.GetProperty("Items")[0]
+                       .GetProperty("IsDeleted").GetBoolean(),
+                "일정 삭제 tombstone이 저장되지 않았습니다.");
+            Assert(document.RootElement.GetProperty("Decorations")[0]
+                       .GetProperty("IsDeleted").GetBoolean(),
+                "날짜 장식 삭제 tombstone이 저장되지 않았습니다.");
+        });
+
+    private static void WithTempDirectory(Action<string> action)
+    {
+        string directory = Path.Combine(Path.GetTempPath(),
+            $"hm-calendar-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try { action(directory); }
+        finally { Directory.Delete(directory, true); }
     }
 
     private static void CalendarViewModelMovesPredictably()
