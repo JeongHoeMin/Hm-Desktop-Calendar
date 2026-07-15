@@ -1,7 +1,7 @@
 # 080 애플리케이션 자체 알림 팝업
 
 ## 상태
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/reminder-popup`
 
 ## 목표
@@ -57,5 +57,5 @@ Windows 알림센터를 사용하지 않고 일정 시각에 제목과 메모를
   [알림 팝업](../../screenshots/080/080-reminder-popup.png)
 
 ## 작업 결과
-- 커밋: 미정
-- PR: 미정
+- 커밋: `a8fc486`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/11
