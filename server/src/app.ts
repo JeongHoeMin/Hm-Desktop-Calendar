@@ -1,3 +1,4 @@
+import type { Writable } from 'node:stream'
 import Fastify, { type FastifyError } from 'fastify'
 import type { AppConfig } from './config.js'
 import database from './plugins/database.js'
@@ -6,10 +7,23 @@ import realtime from './realtime/hub.js'
 import authRoutes from './auth/routes.js'
 import todoRoutes from './todos/routes.js'
 import calendarRoutes from './calendar/routes.js'
+import security from './plugins/security.js'
+
+export function createServerOptions(config: AppConfig, stream?: Writable) {
+  return {
+    bodyLimit: config.bodyLimitBytes,
+    logger: {
+      level: config.logLevel,
+      redact: ['req.headers.authorization', 'headers.authorization'],
+      ...(stream ? { stream } : {})
+    }
+  }
+}
 
 export async function buildApp(config: AppConfig) {
-  const app = Fastify({ logger: { level: config.logLevel } })
+  const app = Fastify(createServerOptions(config))
   app.decorate('config', config)
+  await app.register(security)
   await app.register(database)
   await app.register(auth)
   await app.register(realtime)

@@ -19,6 +19,26 @@
 
 통합 테스트와 실제 실행에는 `.env`의 PostgreSQL 인스턴스가 필요합니다.
 
+## 서버 보안 설정
+
+- 모든 응답에 `@fastify/helmet`의 기본 보안 헤더를 적용한다.
+- IP별 전역 요청 한도는 기본 1분에 300회이며, 회원 가입과 로그인은 각 경로별로
+  1분에 10회다. `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`,
+  `RATE_LIMIT_WINDOW_MS`로 양의 정수 값을 조정할 수 있다.
+- rate-limit 상태는 프로세스 메모리에만 저장하므로 현재 배포 모델은 서버 단일
+  인스턴스를 전제로 한다. 여러 인스턴스로 확장하려면 공유 저장소 기반 limiter가
+  필요하다.
+- 요청 본문은 기본 262,144바이트로 제한한다. `BODY_LIMIT_BYTES`로 양의 정수 값을
+  지정할 수 있다.
+- CORS는 기본적으로 비활성이다. 브라우저 클라이언트가 필요한 경우에만
+  `CORS_ALLOWED_ORIGINS=https://calendar.example.com,http://localhost:5173`처럼
+  정확한 HTTP(S) origin을 쉼표로 구분해 지정한다. `*` 와 경로가 포함된 URL은
+  허용하지 않는다. 데스크톱 클라이언트에는 이 설정이 필요하지 않다.
+- 요청 로그의 `authorization` 헤더 값은 Pino에서 `[Redacted]`로 마스킹한다.
+
+기본값 예시는 `.env.example`에 있다. 환경 변수 값이 유효하지 않으면 서버가
+시작 전에 실패한다.
+
 ## 비밀 정보 관리
 
 - `.env`와 실제 데이터베이스 접속 정보, JWT 비밀키는 커밋하지 않습니다. 저장소에는

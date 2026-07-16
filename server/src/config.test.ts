@@ -29,4 +29,38 @@ describe('loadConfig', () => {
 
     expect(config.databaseUrl).toContain('change-me')
   })
+
+  it('보안 한도 기본값과 CORS 비활성을 제공한다', () => {
+    const config = loadConfig(validEnvironment)
+    expect(config).toMatchObject({
+      bodyLimitBytes: 262144,
+      rateLimitMax: 300,
+      authRateLimitMax: 10,
+      rateLimitWindowMs: 60000,
+      corsAllowedOrigins: []
+    })
+  })
+
+  it('보안 한도와 CORS origin 목록을 검증한다', () => {
+    expect(() => loadConfig({
+      ...validEnvironment, BODY_LIMIT_BYTES: '1.5'
+    })).toThrow('Invalid BODY_LIMIT_BYTES')
+    expect(() => loadConfig({
+      ...validEnvironment, RATE_LIMIT_MAX: '0'
+    })).toThrow('Invalid RATE_LIMIT_MAX')
+    expect(() => loadConfig({
+      ...validEnvironment, CORS_ALLOWED_ORIGINS: '*'
+    })).toThrow('Invalid CORS_ALLOWED_ORIGINS')
+    expect(() => loadConfig({
+      ...validEnvironment, CORS_ALLOWED_ORIGINS: 'https://calendar.example.com/path'
+    })).toThrow('Invalid CORS_ALLOWED_ORIGINS')
+
+    const config = loadConfig({
+      ...validEnvironment,
+      CORS_ALLOWED_ORIGINS: 'https://CALENDAR.example.com/, http://localhost:5173,https://calendar.example.com'
+    })
+    expect(config.corsAllowedOrigins).toEqual([
+      'https://calendar.example.com', 'http://localhost:5173'
+    ])
+  })
 })

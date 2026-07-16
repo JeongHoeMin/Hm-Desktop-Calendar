@@ -8,6 +8,13 @@ const credentials = Type.Object({ email: Type.String({ format: 'email', maxLengt
 const refreshBody = Type.Object({ refreshToken: Type.String({ minLength: 20 }), deviceName: Type.Optional(Type.String({ maxLength: 100 })) })
 
 const routes: FastifyPluginAsync = async app => {
+  const protectedCredentials = {
+    schema: { body: credentials },
+    config: { rateLimit: {
+      max: app.config.authRateLimitMax,
+      timeWindow: app.config.rateLimitWindowMs
+    } }
+  }
   async function createSession(user: { id: string, email: string }, deviceName = '') {
     const refresh = issueRefreshToken(app.config)
     const expires = new Date(Date.now() + app.config.refreshTokenTtlDays * 86400000)
@@ -16,7 +23,7 @@ const routes: FastifyPluginAsync = async app => {
     return { accessToken: app.jwt.sign({ sub: user.id, email: user.email }), refreshToken: refresh.token, user }
   }
 
-  app.post('/v1/auth/register', { schema: { body: credentials } }, async (request, reply) => {
+  app.post('/v1/auth/register', protectedCredentials, async (request, reply) => {
     const body = request.body as typeof credentials.static; const email = normalizeEmail(body.email)
     const hash = await argon2.hash(body.password, { type: argon2.argon2id })
     const id = randomUUID()
@@ -25,7 +32,7 @@ const routes: FastifyPluginAsync = async app => {
     return reply.code(201).send(await createSession({ id, email }, body.deviceName))
   })
 
-  app.post('/v1/auth/login', { schema: { body: credentials } }, async (request, reply) => {
+  app.post('/v1/auth/login', protectedCredentials, async (request, reply) => {
     const body = request.body as typeof credentials.static; const email = normalizeEmail(body.email)
     const result = await app.db.query('SELECT id,email,password_hash FROM users WHERE email=$1', [email]); const user = result.rows[0]
     if (!user || !await argon2.verify(user.password_hash, body.password)) return reply.code(401).send({ message: '이메일 또는 비밀번호가 올바르지 않습니다.' })
