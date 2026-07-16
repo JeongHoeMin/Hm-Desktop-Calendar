@@ -45,6 +45,10 @@ internal static class Program
             ("손상된 앱 설정은 기본값으로 복구한다", AppSettingsFallbackFromCorruption),
             ("설정 화면은 창 위치를 즉시 초기화하고 저장한다", SettingsResetWindowBounds),
             ("설정 메뉴는 세션 상태에 맞는 문구를 표시한다", SettingsMenuTracksSession),
+            ("계정 화면은 비밀번호와 삭제 확인 입력을 검증한다", AccountInputsAreValidated),
+            ("계정 화면은 인증 오류를 한국어로 매핑한다", AccountErrorsAreMapped),
+            ("계정 작업 성공은 세션 종료 상태를 안내한다", AccountSuccessEndsSession),
+            ("로컬 계정 삭제는 선택한 범위만 제거한다", AccountScopeDeletionIsIsolated),
             ("달력 표시 설정은 즉시 적용되고 다시 로드된다", CalendarDisplaySettingsPersist),
             ("외형 프리셋은 달력 크기 토큰과 불투명도를 계산한다", CalendarAppearanceCalculatesTokens),
             ("외형 설정은 즉시 적용되고 다시 로드된다", CalendarAppearanceSettingsPersist),
@@ -873,6 +877,98 @@ internal static class Program
             Assert(viewModel.AuthenticationMenuText == "로그아웃",
                 "로그인 상태의 메뉴 문구가 올바르지 않습니다.");
         });
+    }
+
+    private static void AccountInputsAreValidated()
+    {
+        var session = new FakeAccountSession();
+        var viewModel = new AccountViewModel(session)
+        {
+            CurrentPassword = "old-password",
+            NewPassword = "new-password",
+            ConfirmNewPassword = "different-password",
+            DeletePassword = "old-password",
+            DeleteConfirmation = "other@example.com"
+        };
+
+        Assert(!viewModel.CanChangePassword && !viewModel.CanDeleteAccount,
+            "일치하지 않는 비밀번호나 이메일 확인을 허용했습니다.");
+        viewModel.ConfirmNewPassword = "new-password";
+        viewModel.DeleteConfirmation = session.User!.Email;
+        Assert(viewModel.CanChangePassword && viewModel.CanDeleteAccount,
+            "유효한 계정 입력을 허용하지 않았습니다.");
+    }
+
+    private static void AccountErrorsAreMapped()
+    {
+        var session = new FakeAccountSession
+        {
+            ChangeError = new AuthApiException(
+                System.Net.HttpStatusCode.Unauthorized, "server message")
+        };
+        var viewModel = new AccountViewModel(session)
+        {
+            CurrentPassword = "old-password",
+            NewPassword = "new-password",
+            ConfirmNewPassword = "new-password"
+        };
+
+        bool changed = viewModel.ChangePasswordAsync().GetAwaiter().GetResult();
+        Assert(!changed && viewModel.HasError &&
+               viewModel.ErrorMessage == "현재 비밀번호가 일치하지 않습니다.",
+            "401 계정 오류를 사용자 메시지로 매핑하지 못했습니다.");
+    }
+
+    private static void AccountSuccessEndsSession()
+    {
+        var changeSession = new FakeAccountSession();
+        var change = new AccountViewModel(changeSession)
+        {
+            CurrentPassword = "old-password",
+            NewPassword = "new-password",
+            ConfirmNewPassword = "new-password"
+        };
+        Assert(change.ChangePasswordAsync().GetAwaiter().GetResult() &&
+               change.SessionEnded && change.HasStatus &&
+               changeSession.ChangedTo == "new-password",
+            "비밀번호 변경 성공 상태나 재로그인 안내가 올바르지 않습니다.");
+
+        var deleteSession = new FakeAccountSession();
+        var delete = new AccountViewModel(deleteSession)
+        {
+            DeletePassword = "old-password",
+            DeleteConfirmation = deleteSession.User!.Email
+        };
+        Assert(delete.DeleteAccountAsync().GetAwaiter().GetResult() &&
+               delete.SessionEnded && deleteSession.DeletedWith == "old-password",
+            "계정 삭제 성공 상태를 반영하지 못했습니다.");
+    }
+
+    private static void AccountScopeDeletionIsIsolated() =>
+        WithTempDirectory(directory => AccountScopeDeletionCoreAsync(directory)
+            .GetAwaiter().GetResult());
+
+    private static async Task AccountScopeDeletionCoreAsync(string directory)
+    {
+        string accounts = Path.Combine(directory, "accounts");
+        var userId = Guid.NewGuid();
+        string selected = Path.Combine(accounts, userId.ToString("N"));
+        string other = Path.Combine(accounts, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(selected);
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(selected, "selected.txt"), "delete");
+        File.WriteAllText(Path.Combine(other, "other.txt"), "keep");
+
+        using var session = new AuthSession("http://127.0.0.1:3000");
+        await using var repository = new SyncingCalendarRepository(
+            new LocalCalendarRepository(Path.Combine(accounts, "anonymous")),
+            new RemoteCalendarRepository(session), session, accounts);
+        await repository.SwitchScopeAsync(userId);
+        await repository.DeleteAccountScopeAsync(userId);
+
+        Assert(!Directory.Exists(selected) &&
+               File.Exists(Path.Combine(other, "other.txt")),
+            "선택한 로컬 계정 범위만 삭제하지 못했습니다.");
     }
 
     private static void CalendarDisplaySettingsPersist() =>
@@ -2449,6 +2545,31 @@ internal static class Program
     private static void Assert(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+}
+
+internal sealed class FakeAccountSession : IAccountSession
+{
+    public UserInfo? User { get; } = new(Guid.NewGuid(), "user@example.com");
+    public Exception? ChangeError { get; init; }
+    public Exception? DeleteError { get; init; }
+    public string? ChangedTo { get; private set; }
+    public string? DeletedWith { get; private set; }
+
+    public Task ChangePasswordAsync(string currentPassword, string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        if (ChangeError is not null) return Task.FromException(ChangeError);
+        ChangedTo = newPassword;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAccountAsync(string password,
+        CancellationToken cancellationToken = default)
+    {
+        if (DeleteError is not null) return Task.FromException(DeleteError);
+        DeletedWith = password;
+        return Task.CompletedTask;
     }
 }
 

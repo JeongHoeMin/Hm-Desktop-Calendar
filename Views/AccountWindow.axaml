@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:HmDesktopCalendar.ViewModels"
+        x:Class="HmDesktopCalendar.Views.AccountWindow"
+        x:DataType="vm:AccountViewModel"
+        Classes="dialog"
+        Width="560" Height="680" MinWidth="520" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Title="HmDesktopCalendar 계정 관리" Topmost="True">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="16">
+      <StackPanel Spacing="4">
+        <TextBlock Classes="display" Text="계정 관리" />
+        <TextBlock Classes="body" Text="{Binding Email}"
+                   Foreground="{DynamicResource SocarTextSecondaryBrush}" />
+      </StackPanel>
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="title" Text="비밀번호 변경" />
+          <TextBlock Classes="body" Text="변경하면 모든 로그인 갱신 세션이 종료됩니다."
+                     Foreground="{DynamicResource SocarTextSecondaryBrush}" />
+          <TextBox Text="{Binding CurrentPassword, Mode=TwoWay}"
+                   PlaceholderText="현재 비밀번호" PasswordChar="●" />
+          <TextBox Text="{Binding NewPassword, Mode=TwoWay}"
+                   PlaceholderText="새 비밀번호 (8자 이상)" PasswordChar="●" />
+          <TextBox Text="{Binding ConfirmNewPassword, Mode=TwoWay}"
+                   PlaceholderText="새 비밀번호 확인" PasswordChar="●" />
+          <Button Classes="primary" HorizontalAlignment="Right"
+                  Content="비밀번호 변경" IsEnabled="{Binding CanChangePassword}"
+                  Click="ChangePassword_OnClick" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" BorderBrush="{DynamicResource SocarDangerBrush}">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="title" Text="계정 영구 삭제" />
+          <TextBlock Classes="body" TextWrapping="Wrap"
+                     Text="서버 계정과 원격 일정이 복구할 수 없게 삭제됩니다. 이 PC의 로컬 데이터는 삭제 성공 후 별도로 선택합니다."
+                     Foreground="{DynamicResource SocarTextSecondaryBrush}" />
+          <TextBox Text="{Binding DeletePassword, Mode=TwoWay}"
+                   PlaceholderText="현재 비밀번호" PasswordChar="●" />
+          <TextBlock Classes="caption" Text="{Binding DeleteConfirmationHint}" />
+          <TextBox Text="{Binding DeleteConfirmation, Mode=TwoWay}"
+                   PlaceholderText="계정 이메일" />
+          <Button Classes="danger" HorizontalAlignment="Right"
+                  Content="계정 영구 삭제" IsEnabled="{Binding CanDeleteAccount}"
+                  Click="DeleteAccount_OnClick" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="body" Text="{Binding StatusMessage}"
+                 IsVisible="{Binding HasStatus}" TextWrapping="Wrap"
+                 Foreground="{DynamicResource SocarPrimaryPressedBrush}" />
+      <TextBlock Classes="body status-warning" Text="{Binding ErrorMessage}"
+                 IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+    </StackPanel>
+  </ScrollViewer>
+</Window>

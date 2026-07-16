@@ -102,7 +102,7 @@ public partial class MainWindow : Window
         viewModel.SetTaskRowCapacity(capacity);
     }
     public void ShowMenu(bool loggedIn, bool moving, Action settings,
-        Action overview, Action login, Action logout, Action move,
+        Action overview, Action login, Action account, Action logout, Action move,
         Action complete, Action cancel)
     {
         if (_menuFlyout.IsOpen)
@@ -125,6 +125,12 @@ public partial class MainWindow : Window
         scheduleOverview.Click += (_, _) => overview();
         _menuFlyout.Items.Add(scheduleOverview);
         _menuFlyout.Items.Add(new Separator());
+        if (loggedIn)
+        {
+            var accountItem = new MenuItem { Header = "계정" };
+            accountItem.Click += (_, _) => account();
+            _menuFlyout.Items.Add(accountItem);
+        }
         var auth = new MenuItem { Header = loggedIn ? "로그아웃" : "로그인 / 회원가입" };
         auth.Click += (_, _) => { if (loggedIn) logout(); else login(); };
         _menuFlyout.Items.Add(auth);
