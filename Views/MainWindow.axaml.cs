@@ -101,8 +101,8 @@ public partial class MainWindow : Window
         int capacity = Math.Max(1, (int)Math.Floor((cellHeight - 26) / 16));
         viewModel.SetTaskRowCapacity(capacity);
     }
-    public void ShowMenu(bool loggedIn, bool moving, Action login, Action logout,
-        Action move, Action complete, Action cancel)
+    public void ShowMenu(bool loggedIn, bool moving, Action overview,
+        Action login, Action logout, Action move, Action complete, Action cancel)
     {
         if (_menuFlyout.IsOpen)
         {
@@ -117,6 +117,10 @@ public partial class MainWindow : Window
         if (_dateFlyout.IsOpen) _dateFlyout.Hide();
 
         _menuFlyout.Items.Clear();
+        var scheduleOverview = new MenuItem { Header = "일정 모아보기" };
+        scheduleOverview.Click += (_, _) => overview();
+        _menuFlyout.Items.Add(scheduleOverview);
+        _menuFlyout.Items.Add(new Separator());
         var auth = new MenuItem { Header = loggedIn ? "로그아웃" : "로그인 / 회원가입" };
         auth.Click += (_, _) => { if (loggedIn) logout(); else login(); };
         _menuFlyout.Items.Add(auth);

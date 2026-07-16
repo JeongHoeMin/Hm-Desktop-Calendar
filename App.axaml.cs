@@ -42,6 +42,7 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private LoginWindow? _loginWindow;
     private ReminderWindow? _reminderWindow;
+    private ScheduleOverviewWindow? _overviewWindow;
     private CalendarBoundsController? _positionController;
     private bool _initializing;
     private bool _sessionChanging;
@@ -155,6 +156,9 @@ public partial class App : Application
         _mainWindow?.DismissFlyouts();
 
     private void OnDateEdit(object? sender, DateOnly date)
+        => OpenEditor(date, null);
+
+    private void OpenEditor(DateOnly date, CalendarItem? item)
     {
         if (_positionController?.IsEditing == true) return;
         if (_editor is not null)
@@ -162,13 +166,15 @@ public partial class App : Application
             EditWindow editor = _editor;
             RunBackground(async () =>
             {
-                await editor.ShowDateAsync(date);
+                if (item is null) await editor.ShowDateAsync(date);
+                else await editor.ShowItemAsync(date, item);
                 editor.Activate();
             });
             return;
         }
 
-        _editor = new EditWindow(new CalendarEditorViewModel(date, _repository));
+        var viewModel = new CalendarEditorViewModel(date, _repository);
+        _editor = new EditWindow(viewModel, item);
         _editor.Closed += OnEditorClosed;
         _editor.Show();
         _editor.Activate();
@@ -178,9 +184,37 @@ public partial class App : Application
     {
         _mainWindow?.ShowMenu(_session.IsLoggedIn,
             _positionController?.IsEditing == true,
+            ShowScheduleOverview,
             ShowLogin,
             () => RunBackground(() => _session.LogoutAsync(_lifetime.Token)),
             BeginPositionEdit, CompletePositionEdit, CancelPositionEdit);
+    }
+
+    private void ShowScheduleOverview()
+    {
+        if (_overviewWindow is not null)
+        {
+            _overviewWindow.Activate();
+            return;
+        }
+        var window = _overviewWindow = new ScheduleOverviewWindow(
+            new ScheduleOverviewViewModel(_repository));
+        window.EditRequested += OnOverviewEditRequested;
+        window.Closed += OnOverviewClosed;
+        window.Show();
+        window.Activate();
+    }
+
+    private void OnOverviewEditRequested(object? sender,
+        ScheduleOverviewEditRequestedEventArgs eventArgs) =>
+        OpenEditor(eventArgs.Date, eventArgs.Item);
+
+    private void OnOverviewClosed(object? sender, EventArgs eventArgs)
+    {
+        if (_overviewWindow is not { } window) return;
+        window.EditRequested -= OnOverviewEditRequested;
+        window.Closed -= OnOverviewClosed;
+        _overviewWindow = null;
     }
 
     private void ShowLogin()
@@ -402,6 +436,7 @@ public partial class App : Application
         await WaitForBackgroundTasksAsync();
 
         _editor?.CloseWithoutConfirmation();
+        _overviewWindow?.Close();
         _loginWindow?.Close();
         _interaction?.Dispose();
         _windowHost?.Dispose();
