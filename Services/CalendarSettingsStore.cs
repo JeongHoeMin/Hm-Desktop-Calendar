@@ -5,14 +5,23 @@ using Avalonia;
 
 namespace HmDesktopCalendar.Services;
 
+public enum CalendarWeekStart
+{
+    Sunday,
+    Monday
+}
+
 public sealed record AppSettings
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public int X { get; init; } = 100;
     public int Y { get; init; } = 100;
     public int Width { get; init; }
     public int Height { get; init; }
+    public CalendarWeekStart WeekStart { get; init; } =
+        CalendarWeekStart.Sunday;
+    public bool ColorWeekends { get; init; } = true;
 }
 
 public sealed class AppSettingsChangedEventArgs(AppSettings settings) : EventArgs
@@ -69,6 +78,8 @@ public sealed class CalendarSettingsStore
     public void Save(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        settings = settings with
+        { SchemaVersion = AppSettings.CurrentSchemaVersion };
         bool changed;
         lock (_gate) changed = SaveCore(settings);
         if (changed)
@@ -102,7 +113,8 @@ public sealed class CalendarSettingsStore
             if (File.Exists(_path) &&
                 JsonSerializer.Deserialize<AppSettings>(
                     File.ReadAllText(_path), SerializerOptions) is { } settings)
-                return settings;
+                return settings with
+                { SchemaVersion = AppSettings.CurrentSchemaVersion };
         }
         catch (JsonException) { }
         catch (NotSupportedException) { }

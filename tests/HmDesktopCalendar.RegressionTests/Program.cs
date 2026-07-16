@@ -38,11 +38,14 @@ internal static class Program
             ("한국 공휴일은 음력과 현행 고정일을 계산한다", KoreanHolidaysMatchKnownDates),
             ("한국 대체공휴일은 충돌 뒤 첫 평일로 이동한다", KoreanSubstituteHolidaysAvoidCollisions),
             ("달력은 공휴일을 새 그리드와 재사용 그리드에 합성한다", CalendarViewModelComposesHolidays),
+            ("주 시작 설정은 요일 헤더와 42일 그리드를 함께 정렬한다", CalendarGridTracksWeekStart),
+            ("날짜 숫자 색은 배경·공휴일·주말 우선순위를 지킨다", CalendarDayForegroundPriority),
             ("앱 설정은 기존 창 위치 JSON을 호환한다", AppSettingsLoadLegacyBounds),
             ("앱 설정은 원자 저장과 변경 알림을 제공한다", AppSettingsRoundTripAndNotify),
             ("손상된 앱 설정은 기본값으로 복구한다", AppSettingsFallbackFromCorruption),
             ("설정 화면은 창 위치를 즉시 초기화하고 저장한다", SettingsResetWindowBounds),
             ("설정 메뉴는 세션 상태에 맞는 문구를 표시한다", SettingsMenuTracksSession),
+            ("달력 표시 설정은 즉시 적용되고 다시 로드된다", CalendarDisplaySettingsPersist),
             ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
@@ -666,6 +669,68 @@ internal static class Program
             "지원 범위 밖 연도로 이동했을 때 공휴일 표시가 남았습니다.");
     }
 
+    private static void CalendarGridTracksWeekStart()
+    {
+        var viewModel = new CalendarViewModel(
+            new InMemoryCalendarRepository(),
+            () => new DateTime(2026, 2, 1), ImmediateUpdate);
+
+        viewModel.InitializeAsync().GetAwaiter().GetResult();
+        Assert(viewModel.WeekdayHeaders.Select(header => header.Text)
+                   .SequenceEqual(["일", "월", "화", "수", "목", "금", "토"]) &&
+               viewModel.Days[0].Date == new DateOnly(2026, 2, 1) &&
+               viewModel.Days[^1].Date == new DateOnly(2026, 3, 14),
+            "일요일 시작 2월 그리드 스냅샷이 올바르지 않습니다.");
+
+        viewModel.SetDisplayOptions(CalendarWeekStart.Monday, true);
+        viewModel.RefreshAsync().GetAwaiter().GetResult();
+        Assert(viewModel.WeekdayHeaders.Select(header => header.Text)
+                   .SequenceEqual(["월", "화", "수", "목", "금", "토", "일"]) &&
+               viewModel.Days[0].Date == new DateOnly(2026, 1, 26) &&
+               viewModel.Days[^1].Date == new DateOnly(2026, 3, 8),
+            "월요일 시작 2월 그리드 스냅샷이 올바르지 않습니다.");
+
+        viewModel.SelectMonthAsync(8).GetAwaiter().GetResult();
+        Assert(viewModel.Days[0].Date == new DateOnly(2026, 7, 27) &&
+               viewModel.Days[^1].Date == new DateOnly(2026, 9, 6),
+            "월요일 시작 31일 월의 채움 셀이 올바르지 않습니다.");
+        viewModel.SetDisplayOptions(CalendarWeekStart.Sunday, true);
+        viewModel.RefreshAsync().GetAwaiter().GetResult();
+        Assert(viewModel.Days[0].Date == new DateOnly(2026, 7, 26) &&
+               viewModel.Days[^1].Date == new DateOnly(2026, 9, 5),
+            "일요일 시작 31일 월의 채움 셀이 올바르지 않습니다.");
+    }
+
+    private static void CalendarDayForegroundPriority()
+    {
+        static Avalonia.Media.Color? Foreground(DateOnly date,
+            string? background,
+            string? holiday, bool colorWeekends)
+        {
+            var day = new CalendarDayViewModel(date, true, 0, 0, [], 3,
+                background, holiday, colorWeekends);
+            return (day.DayForegroundBrush as Avalonia.Media.SolidColorBrush)?
+                .Color;
+        }
+
+        Assert(Foreground(new DateOnly(2026, 8, 1), null, null, true) ==
+               Avalonia.Media.Color.Parse("#005AFF"),
+            "토요일 날짜에 파란색을 적용하지 않았습니다.");
+        Assert(Foreground(new DateOnly(2026, 8, 2), null, null, true) ==
+               Avalonia.Media.Color.Parse("#FF5065"),
+            "일요일 날짜에 빨간색을 적용하지 않았습니다.");
+        Assert(Foreground(new DateOnly(2026, 8, 1), null, null, false) is null,
+            "주말 색 끄기 설정에서 주말 전경이 남았습니다.");
+        Assert(Foreground(new DateOnly(2026, 8, 1), null, "공휴일", true) ==
+               Avalonia.Media.Color.Parse("#FF5065"),
+            "토요일과 겹친 공휴일에 공휴일 색이 우선하지 않았습니다.");
+        Assert(Foreground(new DateOnly(2026, 8, 1), "#141A24", "공휴일",
+                   true) == Avalonia.Media.Color.Parse("#FFFFFF"),
+            "사용자 배경색 전경이 공휴일과 주말 색보다 우선하지 않았습니다.");
+        Assert(Foreground(new DateOnly(2026, 8, 3), null, null, true) is null,
+            "평일에 불필요한 날짜 전경을 적용했습니다.");
+    }
+
     private static void AssertHoliday(IReadOnlyList<KoreanHoliday> holidays,
         DateOnly date, string name, bool isSubstitute = false) =>
         Assert(holidays.Any(holiday => holiday.Date == date &&
@@ -688,7 +753,7 @@ internal static class Program
         {
             string path = Path.Combine(directory, "settings.json");
             File.WriteAllText(path,
-                """{"X":-240,"Y":75,"Width":860,"Height":540,"FutureValue":true}""");
+                """{"SchemaVersion":1,"X":-240,"Y":75,"Width":860,"Height":540,"FutureValue":true}""");
             var store = new CalendarSettingsStore(path);
 
             Avalonia.PixelRect bounds = store.Load(980, 680);
@@ -711,7 +776,9 @@ internal static class Program
                 X = -80,
                 Y = 120,
                 Width = 900,
-                Height = 620
+                Height = 620,
+                WeekStart = CalendarWeekStart.Monday,
+                ColorWeekends = false
             };
             int changeCount = 0;
             AppSettings? notified = null;
@@ -794,6 +861,28 @@ internal static class Program
                 "로그인 상태의 메뉴 문구가 올바르지 않습니다.");
         });
     }
+
+    private static void CalendarDisplaySettingsPersist() =>
+        WithTempDirectory(directory =>
+        {
+            string path = Path.Combine(directory, "settings.json");
+            var store = new CalendarSettingsStore(path);
+            store.LoadSettings();
+            (CalendarWeekStart WeekStart, bool ColorWeekends)? applied = null;
+            var viewModel = new SettingsViewModel("1.0.0", store, _ => true,
+                applyDisplayOptions: (weekStart, colorWeekends) =>
+                    applied = (weekStart, colorWeekends));
+
+            viewModel.WeekStartIndex = 1;
+            viewModel.ColorWeekends = false;
+            AppSettings restored = new CalendarSettingsStore(path)
+                .LoadSettings();
+
+            Assert(restored.WeekStart == CalendarWeekStart.Monday &&
+                   !restored.ColorWeekends &&
+                   applied == (CalendarWeekStart.Monday, false),
+                "달력 표시 설정을 즉시 적용하거나 다시 로드하지 못했습니다.");
+        });
 
     private static void LegacyTextColorIsMigrated() =>
         WithTempDirectory(directory =>

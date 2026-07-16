@@ -81,11 +81,14 @@ public partial class App : Application
             desktop.MainWindow = window;
             PixelRect saved = _settings.Load(MainWindow.CalendarWidth,
                 MainWindow.CalendarHeight);
+            _calendar.SetDisplayOptions(_settings.Current.WeekStart,
+                _settings.Current.ColorWeekends);
             _windowHost = new DesktopCalendarWindowCoordinator(window, saved);
             _positionController = new CalendarBoundsController();
             _settingsViewModel = new SettingsViewModel(
                 typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0",
-                _settings, ApplyDefaultWindowBounds, _session.IsLoggedIn);
+                _settings, ApplyDefaultWindowBounds, _session.IsLoggedIn,
+                ApplyCalendarDisplayOptions);
             var interactionNative = new Win32WindowNativeApi();
             _interaction = new DesktopInteractionCoordinator(
                 new GlobalPointerMonitor(interactionNative),
@@ -325,6 +328,14 @@ public partial class App : Application
         _mainWindow?.SetBoundsEditing(false);
         RefreshTrayMenuState();
         return true;
+    }
+
+    private void ApplyCalendarDisplayOptions(CalendarWeekStart weekStart,
+        bool colorWeekends)
+    {
+        if (_calendar?.SetDisplayOptions(weekStart, colorWeekends) != true)
+            return;
+        RunBackground(_calendar.RefreshAsync);
     }
 
     private void OnRealtimeSync(object? sender, EventArgs eventArgs) =>

@@ -43,15 +43,17 @@
           </Border>
         </Grid>
 
-        <UniformGrid Grid.Row="1" Columns="7">
-          <TextBlock Classes="weekday sunday" Text="일" HorizontalAlignment="Center"/>
-          <TextBlock Classes="weekday" Text="월" HorizontalAlignment="Center"/>
-          <TextBlock Classes="weekday" Text="화" HorizontalAlignment="Center"/>
-          <TextBlock Classes="weekday" Text="수" HorizontalAlignment="Center"/>
-          <TextBlock Classes="weekday" Text="목" HorizontalAlignment="Center"/>
-          <TextBlock Classes="weekday" Text="금" HorizontalAlignment="Center"/>
-          <TextBlock Classes="weekday saturday" Text="토" HorizontalAlignment="Center"/>
-        </UniformGrid>
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding WeekdayHeaders}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><UniformGrid Columns="7" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate><DataTemplate>
+            <TextBlock Classes="weekday"
+                       Classes.sunday="{Binding IsSunday}"
+                       Classes.saturday="{Binding IsSaturday}"
+                       Text="{Binding Text}" HorizontalAlignment="Center" />
+          </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
 
         <ItemsControl x:Name="CalendarItems" Grid.Row="2" ItemsSource="{Binding Days}"
                       SizeChanged="CalendarItems_OnSizeChanged">

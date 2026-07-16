@@ -2,8 +2,8 @@
 
 ## 상태
 
-- 상태: 비활성
-- 브랜치: 미정
+- 상태: 완료
+- 브랜치: `feat/calendar-display-options`
 
 ## 목표
 
@@ -35,6 +35,8 @@
   밝기 기반 전경 > 공휴일 빨강 > 주말 색 > 테마 기본.
 - 130이 아직 병합되지 않은 상태로 착수하면 주말 색 우선순위 규칙만 먼저
   구현하고, 130 병합 시 같은 함수에 공휴일 규칙을 합류시킨다.
+- 앱 설정 스키마를 2로 올리고 기존 스키마 1 문서는 일요일 시작·주말 색 켜짐을
+  기본값으로 읽은 뒤 현재 스키마로 정규화한다.
 
 ## 완료 조건
 
@@ -49,7 +51,19 @@
   매트릭스(배경색×공휴일×주말 조합).
 - 수동 확인과 PR 스크린샷.
 
+### 실행 결과
+
+- `dotnet build HmDesktopCalendar.csproj -c Debug`: 성공(경고 0, 오류 0).
+- `dotnet run --project tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj -c Debug`:
+  59개 회귀 테스트 성공.
+- Windows UI 자동화로 설정 창의 일요일·월요일 선택기와 주말 색 토글, 560×610
+  레이아웃 및 접근성 요소를 확인했다.
+- 스크린샷: `docs/screenshots/160/160-display-settings.png`.
+- 바탕화면 레이어에 연결된 달력 본체는 자동화 캡처 대상에서 안정적으로 유지되지
+  않아 본체 스크린샷은 만들지 못했다. 양쪽 주 시작의 2월·31일 월 42일 스냅샷과
+  배경·공휴일·주말 색 우선순위는 회귀 테스트로 검증했다.
+
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `4feab66` (`feat: add calendar display options`)
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/21
