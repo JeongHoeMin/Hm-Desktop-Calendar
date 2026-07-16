@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `fix/server-secret-hygiene`
 
 ## 목표
@@ -59,6 +59,6 @@
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `40cd10f`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/17
 - 저장소에 노출됐던 DB 자격 증명의 회전 완료 여부: 사용자 확인 필요
