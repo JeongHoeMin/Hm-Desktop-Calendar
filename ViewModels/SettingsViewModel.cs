@@ -1,5 +1,6 @@
 using System;
 using Avalonia;
+using HmDesktopCalendar.DesktopIntegration;
 using HmDesktopCalendar.Services;
 
 namespace HmDesktopCalendar.ViewModels;
@@ -13,15 +14,20 @@ public sealed class SettingsViewModel : ViewModelBase
     private readonly Func<PixelRect, bool> _applyWindowBounds;
     private readonly Action<CalendarWeekStart, bool>? _applyDisplayOptions;
     private readonly Action<CalendarFontScale, double>? _applyAppearance;
+    private readonly IAutoStartRegistrar? _autoStartRegistrar;
     private bool _isLoggedIn;
     private string _statusMessage = string.Empty;
     private bool _hasError;
+    private bool _isAutoStartEnabled;
+    private bool _isAutoStartAvailable;
+    private string _autoStartError = string.Empty;
 
     public SettingsViewModel(string appVersion,
         CalendarSettingsStore settings,
         Func<PixelRect, bool> applyWindowBounds, bool isLoggedIn = false,
         Action<CalendarWeekStart, bool>? applyDisplayOptions = null,
-        Action<CalendarFontScale, double>? applyAppearance = null)
+        Action<CalendarFontScale, double>? applyAppearance = null,
+        IAutoStartRegistrar? autoStartRegistrar = null)
     {
         AppVersion = appVersion;
         _settings = settings;
@@ -29,6 +35,9 @@ public sealed class SettingsViewModel : ViewModelBase
         _isLoggedIn = isLoggedIn;
         _applyDisplayOptions = applyDisplayOptions;
         _applyAppearance = applyAppearance;
+        _autoStartRegistrar = autoStartRegistrar;
+        ApplyAutoStartStatus(autoStartRegistrar?.GetStatus() ??
+            AutoStartStatus.Unavailable("자동 시작 기능을 사용할 수 없습니다."));
     }
 
     public string AppVersion { get; }
@@ -101,6 +110,19 @@ public sealed class SettingsViewModel : ViewModelBase
         }
     }
     public string BackgroundOpacityText => $"{BackgroundOpacity:P0}";
+    public bool IsAutoStartEnabled
+    {
+        get => _isAutoStartEnabled;
+        set
+        {
+            if (!_isAutoStartAvailable || _isAutoStartEnabled == value ||
+                _autoStartRegistrar is null) return;
+            ApplyAutoStartStatus(_autoStartRegistrar.SetEnabled(value));
+        }
+    }
+    public bool IsAutoStartAvailable => _isAutoStartAvailable;
+    public string AutoStartError => _autoStartError;
+    public bool HasAutoStartError => !string.IsNullOrWhiteSpace(AutoStartError);
 
     public void UpdateSession(bool isLoggedIn)
     {
@@ -159,6 +181,17 @@ public sealed class SettingsViewModel : ViewModelBase
             SetStatus($"설정 저장 실패: {exception.Message}", true);
             return false;
         }
+    }
+
+    private void ApplyAutoStartStatus(AutoStartStatus status)
+    {
+        SetProperty(ref _isAutoStartAvailable, status.IsAvailable,
+            nameof(IsAutoStartAvailable));
+        SetProperty(ref _isAutoStartEnabled, status.IsEnabled,
+            nameof(IsAutoStartEnabled));
+        if (SetProperty(ref _autoStartError, status.ErrorMessage,
+                nameof(AutoStartError)))
+            OnPropertyChanged(nameof(HasAutoStartError));
     }
 
     private void SetStatus(string message, bool hasError)

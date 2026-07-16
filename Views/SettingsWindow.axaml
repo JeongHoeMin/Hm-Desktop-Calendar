@@ -118,8 +118,23 @@
         </Grid>
       </Border>
 
-      <TextBlock Text="자동 시작 등의 설정은 이후 업데이트에서 이 화면에 추가됩니다."
-                 Classes="caption" TextWrapping="Wrap" Margin="4,0" />
+      <Border Classes="card" Padding="18">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Windows 자동 시작" FontWeight="SemiBold" />
+            <TextBlock Text="Windows에 로그인하면 달력을 자동으로 실행합니다."
+                       Classes="caption" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding AutoStartError}"
+                       IsVisible="{Binding HasAutoStartError}"
+                       Classes="status-warning" TextWrapping="Wrap" />
+          </StackPanel>
+          <ToggleSwitch Grid.Column="1"
+                        IsChecked="{Binding IsAutoStartEnabled, Mode=TwoWay}"
+                        IsEnabled="{Binding IsAutoStartAvailable}"
+                        OnContent="켜짐" OffContent="꺼짐"
+                        VerticalAlignment="Center" />
+        </Grid>
+      </Border>
     </StackPanel>
     </ScrollViewer>
   </Grid>

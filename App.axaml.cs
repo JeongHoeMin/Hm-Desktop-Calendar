@@ -91,7 +91,8 @@ public partial class App : Application
             _settingsViewModel = new SettingsViewModel(
                 typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0",
                 _settings, ApplyDefaultWindowBounds, _session.IsLoggedIn,
-                ApplyCalendarDisplayOptions, ApplyCalendarAppearance);
+                ApplyCalendarDisplayOptions, ApplyCalendarAppearance,
+                new AutoStartRegistrar());
             var interactionNative = new Win32WindowNativeApi();
             _interaction = new DesktopInteractionCoordinator(
                 new GlobalPointerMonitor(interactionNative),
@@ -355,7 +356,7 @@ public partial class App : Application
         Resources["SocarCalendarTaskFontSize"] = tokens.TaskFontSize;
         Resources["SocarCalendarMoreFontSize"] = tokens.MoreFontSize;
         Resources["SocarCalendarCellHeaderHeight"] =
-            tokens.CellHeaderHeight;
+            new GridLength(tokens.CellHeaderHeight);
         Resources["SocarCalendarTaskRowHeight"] = tokens.TaskRowHeight;
         Resources["SocarCalendarSurfaceBrush"] = new SolidColorBrush(
             Color.Parse("#F7F9FC")) { Opacity = tokens.BackgroundOpacity };
