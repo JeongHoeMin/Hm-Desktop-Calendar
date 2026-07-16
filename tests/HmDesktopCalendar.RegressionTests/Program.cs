@@ -46,6 +46,8 @@ internal static class Program
             ("설정 화면은 창 위치를 즉시 초기화하고 저장한다", SettingsResetWindowBounds),
             ("설정 메뉴는 세션 상태에 맞는 문구를 표시한다", SettingsMenuTracksSession),
             ("달력 표시 설정은 즉시 적용되고 다시 로드된다", CalendarDisplaySettingsPersist),
+            ("외형 프리셋은 달력 크기 토큰과 불투명도를 계산한다", CalendarAppearanceCalculatesTokens),
+            ("외형 설정은 즉시 적용되고 다시 로드된다", CalendarAppearanceSettingsPersist),
             ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
@@ -778,7 +780,9 @@ internal static class Program
                 Width = 900,
                 Height = 620,
                 WeekStart = CalendarWeekStart.Monday,
-                ColorWeekends = false
+                ColorWeekends = false,
+                FontScale = CalendarFontScale.Large,
+                BackgroundOpacity = 0.65
             };
             int changeCount = 0;
             AppSettings? notified = null;
@@ -882,6 +886,53 @@ internal static class Program
                    !restored.ColorWeekends &&
                    applied == (CalendarWeekStart.Monday, false),
                 "달력 표시 설정을 즉시 적용하거나 다시 로드하지 못했습니다.");
+        });
+
+    private static void CalendarAppearanceCalculatesTokens()
+    {
+        CalendarAppearanceTokens small = CalendarAppearance.Create(
+            CalendarFontScale.Small, 0.2);
+        CalendarAppearanceTokens medium = CalendarAppearance.Create(
+            CalendarFontScale.Medium, 0.9);
+        CalendarAppearanceTokens large = CalendarAppearance.Create(
+            CalendarFontScale.Large, 1.2);
+
+        Assert(Math.Abs(small.DayFontSize - 12.6) < 0.001 &&
+               Math.Abs(small.TaskRowHeight - 14.4) < 0.001 &&
+               small.BackgroundOpacity == 0.5,
+            "작은 글자 프리셋 또는 최소 불투명도 제한이 잘못되었습니다.");
+        Assert(medium.HeaderFontSize == 16 && medium.TaskFontSize == 11 &&
+               medium.BackgroundOpacity == 0.9,
+            "보통 글자 프리셋 토큰이 기본 크기와 다릅니다.");
+        Assert(Math.Abs(large.DayFontSize - 16.1) < 0.001 &&
+               Math.Abs(large.TaskFontSize - 12.65) < 0.001 &&
+               Math.Abs(large.CellHeaderHeight - 20.7) < 0.001 &&
+               Math.Abs(large.TaskRowHeight - 18.4) < 0.001 &&
+               large.BackgroundOpacity == 1,
+            "큰 글자 프리셋 또는 최대 불투명도 제한이 잘못되었습니다.");
+    }
+
+    private static void CalendarAppearanceSettingsPersist() =>
+        WithTempDirectory(directory =>
+        {
+            string path = Path.Combine(directory, "settings.json");
+            var store = new CalendarSettingsStore(path);
+            store.LoadSettings();
+            (CalendarFontScale FontScale, double Opacity)? applied = null;
+            var viewModel = new SettingsViewModel("1.0.0", store, _ => true,
+                applyAppearance: (fontScale, opacity) =>
+                    applied = (fontScale, opacity));
+
+            viewModel.FontScaleIndex = 2;
+            viewModel.BackgroundOpacity = 0.65;
+            AppSettings restored = new CalendarSettingsStore(path)
+                .LoadSettings();
+
+            Assert(restored.FontScale == CalendarFontScale.Large &&
+                   restored.BackgroundOpacity == 0.65 &&
+                   applied == (CalendarFontScale.Large, 0.65) &&
+                   viewModel.BackgroundOpacityText == "65%",
+                "외형 설정을 즉시 적용하거나 다시 로드하지 못했습니다.");
         });
 
     private static void LegacyTextColorIsMigrated() =>

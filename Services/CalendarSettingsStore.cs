@@ -11,9 +11,16 @@ public enum CalendarWeekStart
     Monday
 }
 
+public enum CalendarFontScale
+{
+    Small,
+    Medium,
+    Large
+}
+
 public sealed record AppSettings
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public int X { get; init; } = 100;
     public int Y { get; init; } = 100;
@@ -22,6 +29,9 @@ public sealed record AppSettings
     public CalendarWeekStart WeekStart { get; init; } =
         CalendarWeekStart.Sunday;
     public bool ColorWeekends { get; init; } = true;
+    public CalendarFontScale FontScale { get; init; } =
+        CalendarFontScale.Medium;
+    public double BackgroundOpacity { get; init; } = 0.9;
 }
 
 public sealed class AppSettingsChangedEventArgs(AppSettings settings) : EventArgs
@@ -78,8 +88,7 @@ public sealed class CalendarSettingsStore
     public void Save(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        settings = settings with
-        { SchemaVersion = AppSettings.CurrentSchemaVersion };
+        settings = Normalize(settings);
         bool changed;
         lock (_gate) changed = SaveCore(settings);
         if (changed)
@@ -113,8 +122,7 @@ public sealed class CalendarSettingsStore
             if (File.Exists(_path) &&
                 JsonSerializer.Deserialize<AppSettings>(
                     File.ReadAllText(_path), SerializerOptions) is { } settings)
-                return settings with
-                { SchemaVersion = AppSettings.CurrentSchemaVersion };
+                return Normalize(settings);
         }
         catch (JsonException) { }
         catch (NotSupportedException) { }
@@ -147,5 +155,25 @@ public sealed class CalendarSettingsStore
         bool changed = _current != settings;
         _current = settings;
         return changed;
+    }
+
+    private static AppSettings Normalize(AppSettings settings)
+    {
+        CalendarWeekStart weekStart = Enum.IsDefined(settings.WeekStart)
+            ? settings.WeekStart : CalendarWeekStart.Sunday;
+        CalendarFontScale fontScale = Enum.IsDefined(settings.FontScale)
+            ? settings.FontScale : CalendarFontScale.Medium;
+        double opacity = double.IsFinite(settings.BackgroundOpacity)
+            ? Math.Round(Math.Clamp(settings.BackgroundOpacity,
+                CalendarAppearance.MinimumOpacity,
+                CalendarAppearance.MaximumOpacity), 2)
+            : 0.9;
+        return settings with
+        {
+            SchemaVersion = AppSettings.CurrentSchemaVersion,
+            WeekStart = weekStart,
+            FontScale = fontScale,
+            BackgroundOpacity = opacity
+        };
     }
 }
