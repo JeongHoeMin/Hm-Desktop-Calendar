@@ -1,7 +1,7 @@
 # 090 일정 모아보기
 
 ## 상태
-- 상태: 비활성
+- 상태: 활성
 - 브랜치: `feat/schedule-overview`
 
 ## 목표
@@ -31,8 +31,16 @@
 - 다른 클라이언트 변경과 이 창의 CRUD가 목록과 월간 달력에 함께 반영된다.
 
 ## 검증
-- 검색·필터·정렬·디바운스와 CRUD ViewModel 테스트를 추가한다.
-- 실시간 동기화, 빈 결과, 대량 목록과 최소 창 크기를 수동 확인한다.
+- 검색·필터·정렬 조합과 저장소 변경 디바운스 회귀 테스트를 추가했다. 공용 편집
+  ViewModel의 기존 CRUD·전체 시리즈 테스트와 함께 검증한다.
+- `dotnet build tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj --no-restore`
+  성공, 경고 0개·오류 0개
+- `dotnet run --project tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj --no-build`
+  회귀 테스트 48개 통과
+- `server`에서 `pnpm test` 재실행, 서버 테스트 9개 통과
+- 실제 Windows 창에서 기본 목록, 빈 검색 결과, 다섯 항목 목록과 680×480 최소 창
+  크기의 스크롤 동작을 확인한다.
+- 스크린샷: [일정 모아보기](../../screenshots/090/090-schedule-overview.png)
 
 ## 작업 결과
 - 커밋: 미정

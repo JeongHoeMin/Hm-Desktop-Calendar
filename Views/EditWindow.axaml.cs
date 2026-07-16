@@ -18,12 +18,18 @@ public partial class EditWindow : Window
 
     public EditWindow() => InitializeComponent();
 
-    public EditWindow(CalendarEditorViewModel viewModel) : this()
+    public EditWindow(CalendarEditorViewModel viewModel,
+        CalendarItem? initialItem = null) : this()
     {
         DataContext = viewModel;
         Opened += async (_, _) =>
         {
-            try { await viewModel.LoadAsync(); }
+            try
+            {
+                await viewModel.LoadAsync();
+                if (initialItem is not null)
+                    viewModel.BeginEdit(initialItem, true);
+            }
             catch (Exception exception)
             {
                 viewModel.ErrorMessage =
@@ -39,6 +45,14 @@ public partial class EditWindow : Window
         if (ViewModel.HasUnsavedChanges &&
             !await ConfirmDiscardAsync()) return;
         await ViewModel.LoadDateAsync(date, true);
+    }
+
+    public async Task ShowItemAsync(DateOnly date, CalendarItem item)
+    {
+        if (ViewModel.HasUnsavedChanges &&
+            !await ConfirmDiscardAsync()) return;
+        if (await ViewModel.LoadDateAsync(date, true))
+            ViewModel.BeginEdit(item, true);
     }
 
     public void CloseWithoutConfirmation()

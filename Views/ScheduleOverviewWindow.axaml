@@ -1,0 +1,140 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HmDesktopCalendar.Views.ScheduleOverviewWindow"
+        x:CompileBindings="False"
+        Classes="dialog"
+        Width="920" Height="680" MinWidth="680" MinHeight="480"
+        Title="일정 모아보기" WindowStartupLocation="CenterScreen"
+        Topmost="True">
+  <Grid Margin="24" RowDefinitions="Auto,16,Auto,16,*">
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="4">
+        <TextBlock Text="일정 모아보기" Classes="title" />
+        <TextBlock Text="기간 안의 일정을 검색하고 기존 편집 화면에서 관리하세요."
+                   Classes="caption" />
+      </StackPanel>
+      <Button Grid.Column="1" Content="＋ 새 일정" Classes="primary"
+              Click="New_OnClick" />
+    </Grid>
+
+    <Border Grid.Row="2" Classes="card" Padding="16">
+      <Grid RowDefinitions="Auto,12,Auto" ColumnDefinitions="2*,12,*,12,*">
+        <StackPanel Spacing="6">
+          <TextBlock Text="검색" FontWeight="SemiBold" />
+          <TextBox Text="{Binding SearchText, Mode=TwoWay,
+                                  UpdateSourceTrigger=PropertyChanged}"
+                   PlaceholderText="제목 또는 메모" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Spacing="6">
+          <TextBlock Text="기간" FontWeight="SemiBold" />
+          <ComboBox SelectedIndex="{Binding RangeIndex, Mode=TwoWay}">
+            <ComboBoxItem Content="현재 월" />
+            <ComboBoxItem Content="오늘부터 30일" />
+            <ComboBoxItem Content="오늘부터 90일" />
+            <ComboBoxItem Content="사용자 기간" />
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Grid.Column="4" Spacing="6">
+          <TextBlock Text="상태" FontWeight="SemiBold" />
+          <ComboBox SelectedIndex="{Binding StatusIndex, Mode=TwoWay}">
+            <ComboBoxItem Content="전체" />
+            <ComboBoxItem Content="예정" />
+            <ComboBoxItem Content="완료" />
+            <ComboBoxItem Content="기념일" />
+          </ComboBox>
+        </StackPanel>
+
+        <Grid Grid.Row="2" Grid.ColumnSpan="5"
+              ColumnDefinitions="*,12,*,12,Auto">
+          <StackPanel Spacing="6" IsVisible="{Binding IsCustomRange}">
+            <TextBlock Text="시작일" FontWeight="SemiBold" />
+            <DatePicker SelectedDate="{Binding CustomStart, Mode=TwoWay}"
+                        HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" Spacing="6"
+                      IsVisible="{Binding IsCustomRange}">
+            <TextBlock Text="종료일" FontWeight="SemiBold" />
+            <DatePicker SelectedDate="{Binding CustomEnd, Mode=TwoWay}"
+                        HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="4" Spacing="6">
+            <TextBlock Text="정렬" FontWeight="SemiBold" />
+            <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}"
+                      MinWidth="130">
+              <ComboBoxItem Content="날짜·시간 빠른 순" />
+              <ComboBoxItem Content="날짜·시간 늦은 순" />
+            </ComboBox>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="4" Classes="card" Padding="16">
+      <Grid RowDefinitions="Auto,12,*">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="조회 결과" FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="{Binding ResultSummary}"
+                     Classes="caption" VerticalAlignment="Center" />
+        </Grid>
+
+        <Grid Grid.Row="2">
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}"
+                       VerticalAlignment="Top" />
+          <TextBlock Text="조건에 맞는 일정이 없습니다."
+                     IsVisible="{Binding IsEmpty}"
+                     Classes="caption" HorizontalAlignment="Center"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ErrorMessage}"
+                     IsVisible="{Binding HasError}"
+                     Classes="status-warning" TextWrapping="Wrap"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+          <ScrollViewer IsVisible="{Binding HasItems}"
+                        VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Items}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,0,0,8" Padding="14"
+                          Background="{DynamicResource SocarSurfaceSubtleBrush}"
+                          BorderBrush="{DynamicResource SocarBorderBrush}"
+                          BorderThickness="1" CornerRadius="10">
+                    <Grid ColumnDefinitions="4,12,120,16,*,Auto">
+                      <Border Background="{Binding Color}" CornerRadius="2" />
+                      <StackPanel Grid.Column="2" Spacing="3">
+                        <TextBlock Text="{Binding DateText}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding TimeText}" Classes="caption" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="4" Spacing="4"
+                                  VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Border Background="{DynamicResource SocarPrimarySoftBrush}"
+                                  CornerRadius="5" Padding="6,1">
+                            <TextBlock Text="{Binding BadgeText}" FontSize="10"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource SocarPrimaryPressedBrush}" />
+                          </Border>
+                          <Border IsVisible="{Binding HasSeries}"
+                                  Background="#E9F8F0" CornerRadius="5" Padding="6,1">
+                            <TextBlock Text="{Binding SeriesText}" FontSize="10"
+                                       FontWeight="Bold" Foreground="#17663A" />
+                          </Border>
+                          <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Notes}" Classes="caption"
+                                   TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <Button Grid.Column="5" Content="편집" Classes="secondary"
+                              Padding="14,0" Click="Edit_OnClick"
+                              VerticalAlignment="Center" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

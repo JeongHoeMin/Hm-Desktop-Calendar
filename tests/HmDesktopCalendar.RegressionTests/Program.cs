@@ -67,7 +67,9 @@ internal static class Program
             ("v2 원격 클라이언트는 통합 일정 계약을 사용한다", RemoteCalendarClientUsesV2Contract),
             ("알림 편집은 프리셋과 시간 없는 일정 기준 시각을 저장한다", ReminderEditorCreatesAnchors),
             ("알림 저장소는 기준 시각과 허용 범위를 검증한다", ReminderRepositoryValidatesRules),
-            ("알림 스케줄러는 중복·다시 알림·기간 경계를 처리한다", ReminderSchedulerHandlesLifecycle)
+            ("알림 스케줄러는 중복·다시 알림·기간 경계를 처리한다", ReminderSchedulerHandlesLifecycle),
+            ("모아보기는 기간·검색·상태·정렬을 조합한다", ScheduleOverviewCombinesFilters),
+            ("모아보기는 연속 저장소 변경을 디바운스한다", ScheduleOverviewDebouncesRepositoryChanges)
         };
         int failures = 0;
         foreach (var test in tests)
@@ -1360,6 +1362,103 @@ internal static class Program
             "로그아웃 뒤 이전 계정의 성공 시각이 남았습니다.");
     }
 
+    private static void ScheduleOverviewCombinesFilters()
+    {
+        var repository = new InMemoryCalendarRepository();
+        DateTime today = new(2026, 7, 15);
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "프로젝트 회의", Notes = "고객 요청 검토",
+            StartDate = new DateOnly(2026, 7, 16),
+            EndDate = new DateOnly(2026, 7, 16),
+            StartTime = new TimeOnly(9, 0)
+        }).GetAwaiter().GetResult();
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "정산 완료", IsCompleted = true,
+            StartDate = new DateOnly(2026, 7, 15),
+            EndDate = new DateOnly(2026, 7, 15),
+            StartTime = new TimeOnly(18, 0)
+        }).GetAwaiter().GetResult();
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Kind = CalendarItemKind.Anniversary,
+            Title = "창립 기념일",
+            StartDate = new DateOnly(2020, 7, 20),
+            EndDate = new DateOnly(2020, 7, 20),
+            Recurrence = new RecurrenceRule(RecurrenceFrequency.Yearly)
+        }).GetAwaiter().GetResult();
+        repository.UpsertItemAsync(new CalendarItem
+        {
+            Title = "범위 밖 일정",
+            StartDate = new DateOnly(2026, 11, 1),
+            EndDate = new DateOnly(2026, 11, 1)
+        }).GetAwaiter().GetResult();
+
+        using var viewModel = new ScheduleOverviewViewModel(repository,
+            () => today, action => { action(); return Task.CompletedTask; },
+            Task.Delay);
+        viewModel.InitializeAsync().GetAwaiter().GetResult();
+        Assert(viewModel.Items.Count == 3,
+            "기본 90일 범위가 잘못되었습니다.");
+
+        viewModel.SearchText = "고객";
+        viewModel.RefreshAsync().GetAwaiter().GetResult();
+        Assert(viewModel.Items.Count == 1 &&
+               viewModel.Items[0].Title == "프로젝트 회의",
+            "제목·메모 검색이 결과를 좁히지 못했습니다.");
+
+        viewModel.SearchText = string.Empty;
+        viewModel.StatusIndex = (int)ScheduleOverviewStatus.Completed;
+        viewModel.RefreshAsync().GetAwaiter().GetResult();
+        Assert(viewModel.Items.Count == 1 && viewModel.Items[0].IsCompleted,
+            "완료 필터가 완료 일정만 표시하지 못했습니다.");
+
+        viewModel.StatusIndex = (int)ScheduleOverviewStatus.All;
+        viewModel.RangeIndex = (int)ScheduleOverviewRange.Custom;
+        viewModel.CustomStart = new DateTimeOffset(2026, 7, 20, 0, 0, 0,
+            TimeSpan.Zero);
+        viewModel.CustomEnd = new DateTimeOffset(2026, 7, 15, 0, 0, 0,
+            TimeSpan.Zero);
+        viewModel.SortIndex = 1;
+        viewModel.RefreshAsync().GetAwaiter().GetResult();
+        Assert(viewModel.Items.Count == 3 &&
+               viewModel.Items[0].Date == new DateOnly(2026, 7, 20) &&
+               viewModel.Items[^1].Date == new DateOnly(2026, 7, 15),
+            "사용자 기간 정규화 또는 날짜·시간 역순 정렬이 잘못되었습니다.");
+    }
+
+    private static void ScheduleOverviewDebouncesRepositoryChanges()
+    {
+        var repository = new InMemoryCalendarRepository();
+        var delays = new List<TaskCompletionSource>();
+        Task Delay(TimeSpan _, CancellationToken cancellationToken)
+        {
+            var completion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            cancellationToken.Register(() => completion.TrySetCanceled(
+                cancellationToken));
+            delays.Add(completion);
+            return completion.Task;
+        }
+
+        using var viewModel = new ScheduleOverviewViewModel(repository,
+            () => new DateTime(2026, 7, 15),
+            action => { action(); return Task.CompletedTask; }, Delay);
+        viewModel.InitializeAsync().GetAwaiter().GetResult();
+        int initialQueries = repository.OccurrenceQueryCount;
+        repository.RaiseChanged();
+        repository.RaiseChanged();
+        repository.RaiseChanged();
+        Assert(delays.Count == 3, "저장소 변경 알림이 누락되었습니다.");
+        delays[^1].SetResult();
+        Assert(SpinWait.SpinUntil(() => repository.OccurrenceQueryCount ==
+                   initialQueries + 1, TimeSpan.FromSeconds(2)),
+            "마지막 변경 뒤 목록을 새로고치지 않았습니다.");
+        Assert(repository.OccurrenceQueryCount == initialQueries + 1,
+            "연속 변경이 여러 조회로 증폭되었습니다.");
+    }
+
     private static CalendarViewModel CreateCalendarViewModel() => new(
         new InMemoryCalendarRepository(),
         () => new DateTime(2026, 7, 14),
@@ -1675,6 +1774,7 @@ internal sealed class InMemoryCalendarRepository : ICalendarRepository
     public event EventHandler? Changed;
     public int UpsertCount { get; private set; }
     public int DeleteCount { get; private set; }
+    public int OccurrenceQueryCount { get; private set; }
 
     public Task<IReadOnlyList<CalendarItem>> GetItemsByRangeAsync(DateOnly from,
         DateOnly to, CancellationToken cancellationToken = default) =>
@@ -1685,8 +1785,16 @@ internal sealed class InMemoryCalendarRepository : ICalendarRepository
     public Task<IReadOnlyList<CalendarOccurrence>> GetOccurrencesByRangeAsync(
         DateOnly from,
         DateOnly to, CancellationToken cancellationToken = default) =>
-        Task.FromResult(CalendarOccurrenceEngine.GetOccurrences(_items,
-            from, to));
+        Task.FromResult(GetOccurrences(from, to));
+
+    private IReadOnlyList<CalendarOccurrence> GetOccurrences(DateOnly from,
+        DateOnly to)
+    {
+        OccurrenceQueryCount++;
+        return CalendarOccurrenceEngine.GetOccurrences(_items, from, to);
+    }
+
+    public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 
     public Task<IReadOnlyList<DateCellDecoration>> GetDecorationsByRangeAsync(
         DateOnly from, DateOnly to,
