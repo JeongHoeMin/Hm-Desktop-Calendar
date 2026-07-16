@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/settings-window-and-tray`
 
 ## 목표
@@ -66,5 +66,5 @@
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `625a8a9` (`feat: add settings window and tray actions`)
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/20
