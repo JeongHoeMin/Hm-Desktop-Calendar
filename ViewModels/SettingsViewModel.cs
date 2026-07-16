@@ -15,19 +15,24 @@ public sealed class SettingsViewModel : ViewModelBase
     private readonly Action<CalendarWeekStart, bool>? _applyDisplayOptions;
     private readonly Action<CalendarFontScale, double>? _applyAppearance;
     private readonly IAutoStartRegistrar? _autoStartRegistrar;
+    private readonly BackupService? _backupService;
+    private readonly Action<string>? _openFolder;
     private bool _isLoggedIn;
     private string _statusMessage = string.Empty;
     private bool _hasError;
     private bool _isAutoStartEnabled;
     private bool _isAutoStartAvailable;
     private string _autoStartError = string.Empty;
+    private DateTimeOffset? _lastBackupAt;
 
     public SettingsViewModel(string appVersion,
         CalendarSettingsStore settings,
         Func<PixelRect, bool> applyWindowBounds, bool isLoggedIn = false,
         Action<CalendarWeekStart, bool>? applyDisplayOptions = null,
         Action<CalendarFontScale, double>? applyAppearance = null,
-        IAutoStartRegistrar? autoStartRegistrar = null)
+        IAutoStartRegistrar? autoStartRegistrar = null,
+        BackupService? backupService = null,
+        Action<string>? openFolder = null)
     {
         AppVersion = appVersion;
         _settings = settings;
@@ -36,6 +41,9 @@ public sealed class SettingsViewModel : ViewModelBase
         _applyDisplayOptions = applyDisplayOptions;
         _applyAppearance = applyAppearance;
         _autoStartRegistrar = autoStartRegistrar;
+        _backupService = backupService;
+        _openFolder = openFolder;
+        _lastBackupAt = backupService?.GetLastBackupAt();
         ApplyAutoStartStatus(autoStartRegistrar?.GetStatus() ??
             AutoStartStatus.Unavailable("자동 시작 기능을 사용할 수 없습니다."));
     }
@@ -123,6 +131,9 @@ public sealed class SettingsViewModel : ViewModelBase
     public bool IsAutoStartAvailable => _isAutoStartAvailable;
     public string AutoStartError => _autoStartError;
     public bool HasAutoStartError => !string.IsNullOrWhiteSpace(AutoStartError);
+    public string LastBackupText => _lastBackupAt is { } completed
+        ? $"마지막 백업: {completed.ToLocalTime():yyyy-MM-dd HH:mm}"
+        : "아직 생성된 백업이 없습니다.";
 
     public void UpdateSession(bool isLoggedIn)
     {
@@ -147,6 +158,29 @@ public sealed class SettingsViewModel : ViewModelBase
         catch (Exception exception)
         {
             SetStatus($"설정 저장 실패: {exception.Message}", true);
+            return false;
+        }
+    }
+
+    public void UpdateBackupStatus(BackupResult result)
+    {
+        if (result.LastBackupAt is { } completed)
+            _lastBackupAt = completed;
+        OnPropertyChanged(nameof(LastBackupText));
+    }
+
+    public bool OpenBackupFolder()
+    {
+        if (_backupService is null || _openFolder is null) return false;
+        try
+        {
+            _backupService.EnsureBackupRoot();
+            _openFolder(_backupService.BackupRoot);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"백업 폴더 열기 실패: {exception.Message}", true);
             return false;
         }
     }

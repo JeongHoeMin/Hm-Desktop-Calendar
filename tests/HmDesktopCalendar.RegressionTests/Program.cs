@@ -50,6 +50,9 @@ internal static class Program
             ("외형 설정은 즉시 적용되고 다시 로드된다", CalendarAppearanceSettingsPersist),
             ("자동 시작 등록은 테스트 레지스트리 값을 왕복한다", AutoStartRegistryRoundTrip),
             ("자동 시작 오류는 토글을 비활성화하고 사유를 표시한다", AutoStartFailureDisablesToggle),
+            ("로컬 백업은 데이터 범위와 하루 한 번 규칙을 지킨다", BackupCopiesDataOncePerDay),
+            ("로컬 백업은 최근 10개 세대만 보관한다", BackupRetainsTenGenerations),
+            ("로컬 백업 실패는 부분 세대를 남기지 않는다", BackupFailureLeavesNoPartialGeneration),
             ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
@@ -975,6 +978,78 @@ internal static class Program
                viewModel.AutoStartError.Contains("테스트 오류"),
             "자동 시작 접근 실패 상태를 설정 화면에 전달하지 못했습니다.");
     }
+
+    private static void BackupCopiesDataOncePerDay() =>
+        WithTempDirectory(directory =>
+        {
+            File.WriteAllText(Path.Combine(directory, "calendar-v2.json"),
+                "root-data");
+            File.WriteAllText(Path.Combine(directory, "settings.json"),
+                "excluded");
+            string account = Path.Combine(directory, "accounts", "user-a");
+            Directory.CreateDirectory(account);
+            File.WriteAllText(Path.Combine(account, "calendar-v2.json"),
+                "account-data");
+            DateTimeOffset now = new(2026, 7, 16, 9, 30, 0,
+                TimeSpan.FromHours(9));
+            var service = new BackupService(directory, () => now);
+
+            BackupResult first = service.CreateBackupIfDueAsync()
+                .GetAwaiter().GetResult();
+            BackupResult second = service.CreateBackupIfDueAsync()
+                .GetAwaiter().GetResult();
+
+            Assert(first.Created && !second.Created &&
+                   Directory.GetDirectories(service.BackupRoot).Length == 1,
+                "같은 날 중복 백업을 생성했습니다.");
+            Assert(File.ReadAllText(Path.Combine(first.BackupPath!,
+                       "calendar-v2.json")) == "root-data" &&
+                   File.ReadAllText(Path.Combine(first.BackupPath!, "accounts",
+                       "user-a", "calendar-v2.json")) == "account-data" &&
+                   !File.Exists(Path.Combine(first.BackupPath!, "settings.json")),
+                "백업 대상 범위 또는 상대 경로가 올바르지 않습니다.");
+        });
+
+    private static void BackupRetainsTenGenerations() =>
+        WithTempDirectory(directory =>
+        {
+            File.WriteAllText(Path.Combine(directory, "calendar-v2.json"), "x");
+            string backupRoot = Path.Combine(directory, "backups");
+            Directory.CreateDirectory(backupRoot);
+            for (int day = 1; day <= 10; day++)
+                Directory.CreateDirectory(Path.Combine(backupRoot,
+                    $"202606{day:00}-010000"));
+            var service = new BackupService(directory, () =>
+                new DateTimeOffset(2026, 7, 16, 12, 0, 0,
+                    TimeSpan.FromHours(9)));
+
+            BackupResult result = service.CreateBackupIfDueAsync()
+                .GetAwaiter().GetResult();
+            string[] generations = Directory.GetDirectories(backupRoot)
+                .Select(Path.GetFileName).OrderBy(name => name).ToArray()!;
+
+            Assert(result.Created && generations.Length == 10 &&
+                   !generations.Contains("20260601-010000") &&
+                   generations.Contains("20260716-120000"),
+                "11번째 백업에서 가장 오래된 세대를 삭제하지 못했습니다.");
+        });
+
+    private static void BackupFailureLeavesNoPartialGeneration() =>
+        WithTempDirectory(directory =>
+        {
+            File.WriteAllText(Path.Combine(directory, "calendar-v2.json"), "x");
+            var service = new BackupService(directory,
+                () => new DateTimeOffset(2026, 7, 16, 12, 0, 0,
+                    TimeSpan.FromHours(9)),
+                (_, _, _) => throw new IOException("copy failed"));
+
+            BackupResult result = service.CreateBackupIfDueAsync()
+                .GetAwaiter().GetResult();
+
+            Assert(!result.Succeeded && !result.Created &&
+                   Directory.GetDirectories(service.BackupRoot).Length == 0,
+                "복사 실패 후 부분 백업 세대가 남았습니다.");
+        });
 
     private static void LegacyTextColorIsMigrated() =>
         WithTempDirectory(directory =>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -26,6 +27,7 @@ public partial class App : Application
     private readonly RealtimeSyncClient _realtime;
     private readonly ReminderScheduler _reminders;
     private readonly CalendarSettingsStore _settings = new();
+    private readonly BackupService _backups = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _sessionGate = new(1, 1);
     private readonly object _taskLock = new();
@@ -92,7 +94,7 @@ public partial class App : Application
                 typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0",
                 _settings, ApplyDefaultWindowBounds, _session.IsLoggedIn,
                 ApplyCalendarDisplayOptions, ApplyCalendarAppearance,
-                new AutoStartRegistrar());
+                new AutoStartRegistrar(), _backups, OpenFolder);
             var interactionNative = new Win32WindowNativeApi();
             _interaction = new DesktopInteractionCoordinator(
                 new GlobalPointerMonitor(interactionNative),
@@ -136,6 +138,7 @@ public partial class App : Application
                 await _repository.SynchronizeAsync(_lifetime.Token);
             await _calendar.InitializeAsync();
             _reminders.Start();
+            RunBackground(CreateBackupAsync);
         }
         finally { _initializing = false; }
 
@@ -147,6 +150,19 @@ public partial class App : Application
             Console.Error.WriteLine($"바탕화면 입력 감시 시작 실패: {exception}");
         }
     }
+
+    private async Task CreateBackupAsync()
+    {
+        BackupResult result = await _backups.CreateBackupIfDueAsync(
+            _lifetime.Token);
+        if (!result.Succeeded)
+            Console.Error.WriteLine($"로컬 데이터 백업 실패: {result.ErrorMessage}");
+        Dispatcher.UIThread.Post(() =>
+            _settingsViewModel?.UpdateBackupStatus(result));
+    }
+
+    private static void OpenFolder(string path) => Process.Start(
+        new ProcessStartInfo(path) { UseShellExecute = true });
 
     private void OnPreviousMonth(object? sender, EventArgs eventArgs)
     {

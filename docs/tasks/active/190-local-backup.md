@@ -2,8 +2,8 @@
 
 ## 상태
 
-- 상태: 비활성
-- 브랜치: 미정
+- 상태: 활성
+- 브랜치: `feat/local-backup`
 
 ## 목표
 
@@ -39,6 +39,8 @@
 - 백업 실패는 로그만 남기고 앱 동작에 영향을 주지 않는다.
 - 저장소 파일이 쓰기 중일 수 있으므로 공유 읽기 모드로 복사하고, 실패한
   파일은 다음 주기에 재시도한다.
+- 백업 루트 조회·생성 실패도 결과 오류로 반환하며 설정 창이나 앱 초기화를
+  중단시키지 않는다.
 
 ## 완료 조건
 
@@ -50,6 +52,21 @@
 
 - 회귀 테스트: 보관 정책, 1일 1회 규칙, 부분 실패 시 동작.
 - 백업 폴더 내용과 수동 복원 절차를 실제로 수행해 확인한다.
+
+### 실행 결과
+
+- `dotnet build HmDesktopCalendar.csproj -c Debug`: 성공(경고 0, 오류 0).
+- `dotnet run --project tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj -c Debug`:
+  66개 회귀 테스트 성공.
+- 하루 한 번 제한, 루트·계정 상대 경로와 `settings.json` 제외, 11번째 생성 시
+  가장 오래된 세대 삭제, 복사 실패 시 임시 세대 정리를 회귀 테스트로 검증했다.
+- 실제 앱 실행으로 `%LocalAppData%\HmDesktopCalendar\backups\20260716-131120`을
+  생성하고 루트 `calendar-v2.json`, `todos.json`과 계정별 파일이 포함되며
+  `settings.json`은 제외된 것을 확인했다.
+- 수동 복원 절차: `docs/backup-restore.md`.
+- Windows UI 자동화로 마지막 백업 시각과 **백업 폴더 열기** 버튼의 렌더링·접근성
+  요소를 확인했다.
+- 스크린샷: `docs/screenshots/190/190-local-backup.png`.
 
 ## 작업 결과
 
