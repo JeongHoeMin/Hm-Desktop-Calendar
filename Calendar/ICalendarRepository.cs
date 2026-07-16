@@ -11,6 +11,8 @@ public interface ICalendarRepository
 {
     event EventHandler? Changed;
 
+    Task<IReadOnlyList<CalendarItem>> GetAllItemsAsync(
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CalendarItem>> GetItemsByRangeAsync(DateOnly from,
         DateOnly to, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CalendarOccurrence>> GetOccurrencesByRangeAsync(

@@ -1,6 +1,7 @@
 using System;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using HmDesktopCalendar.Calendar;
 using HmDesktopCalendar.ViewModels;
 
@@ -33,6 +34,28 @@ public partial class ScheduleOverviewWindow : Window
     private void New_OnClick(object? sender, RoutedEventArgs eventArgs) =>
         EditRequested?.Invoke(this, new ScheduleOverviewEditRequestedEventArgs(
             DateOnly.FromDateTime(DateTime.Today), null));
+
+    private async void ExportIcs_OnClick(object? sender,
+        RoutedEventArgs eventArgs)
+    {
+        IStorageFile? file = await StorageProvider.SaveFilePickerAsync(
+            new FilePickerSaveOptions
+            {
+                Title = "ICS 파일 저장",
+                SuggestedFileName = $"하네스-일정-{DateTime.Today:yyyyMMdd}.ics",
+                DefaultExtension = "ics",
+                FileTypeChoices =
+                [
+                    new FilePickerFileType("iCalendar 파일")
+                    {
+                        Patterns = ["*.ics"],
+                        MimeTypes = ["text/calendar"]
+                    }
+                ]
+            });
+        if (file is not null)
+            await ViewModel.ExportIcsAsync(file.Path.LocalPath);
+    }
 
     private void Edit_OnClick(object? sender, RoutedEventArgs eventArgs)
     {

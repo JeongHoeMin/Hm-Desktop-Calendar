@@ -5,16 +5,28 @@
         Classes="dialog"
         Width="920" Height="680" MinWidth="680" MinHeight="480"
         Title="일정 모아보기" WindowStartupLocation="CenterScreen"
-        Topmost="True">
-  <Grid Margin="24" RowDefinitions="Auto,16,Auto,16,*">
+        Topmost="True"
+        Background="{DynamicResource SocarSurfaceSubtleBrush}">
+  <Grid Margin="24" RowDefinitions="Auto,16,Auto,16,*"
+        Background="{DynamicResource SocarSurfaceSubtleBrush}">
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="4">
         <TextBlock Text="일정 모아보기" Classes="title" />
         <TextBlock Text="기간 안의 일정을 검색하고 기존 편집 화면에서 관리하세요."
                    Classes="caption" />
+        <TextBlock Text="{Binding ExportMessage}"
+                   IsVisible="{Binding HasExportMessage}"
+                   Classes="caption"
+                   Classes.status-warning="{Binding IsExportError}"
+                   TextWrapping="Wrap" />
       </StackPanel>
-      <Button Grid.Column="1" Content="＋ 새 일정" Classes="primary"
-              Click="New_OnClick" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                  VerticalAlignment="Center">
+        <Button Content="ICS 내보내기" Classes="secondary"
+                Click="ExportIcs_OnClick" />
+        <Button Content="＋ 새 일정" Classes="primary"
+                Click="New_OnClick" />
+      </StackPanel>
     </Grid>
 
     <Border Grid.Row="2" Classes="card" Padding="16">

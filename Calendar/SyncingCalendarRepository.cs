@@ -96,6 +96,11 @@ public sealed class SyncingCalendarRepository : ICalendarRepository,
         WithLocalAsync(local => local.GetItemsByRangeAsync(from, to,
             cancellationToken), cancellationToken);
 
+    public Task<IReadOnlyList<CalendarItem>> GetAllItemsAsync(
+        CancellationToken cancellationToken = default) =>
+        WithLocalAsync(local => local.GetAllItemsAsync(cancellationToken),
+            cancellationToken);
+
     public Task<IReadOnlyList<CalendarOccurrence>> GetOccurrencesByRangeAsync(
         DateOnly from, DateOnly to,
         CancellationToken cancellationToken = default) =>
