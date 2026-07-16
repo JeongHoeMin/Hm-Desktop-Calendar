@@ -39,10 +39,14 @@ public partial class App : Application
     private DesktopCalendarWindowCoordinator? _windowHost;
     private DesktopInteractionCoordinator? _interaction;
     private TrayIcon? _trayIcon;
+    private NativeMenuItem? _trayPositionItem;
+    private NativeMenuItem? _trayAuthenticationItem;
     private MainWindow? _mainWindow;
     private LoginWindow? _loginWindow;
     private ReminderWindow? _reminderWindow;
     private ScheduleOverviewWindow? _overviewWindow;
+    private SettingsWindow? _settingsWindow;
+    private SettingsViewModel? _settingsViewModel;
     private CalendarBoundsController? _positionController;
     private bool _initializing;
     private bool _sessionChanging;
@@ -79,6 +83,9 @@ public partial class App : Application
                 MainWindow.CalendarHeight);
             _windowHost = new DesktopCalendarWindowCoordinator(window, saved);
             _positionController = new CalendarBoundsController();
+            _settingsViewModel = new SettingsViewModel(
+                typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0",
+                _settings, ApplyDefaultWindowBounds, _session.IsLoggedIn);
             var interactionNative = new Win32WindowNativeApi();
             _interaction = new DesktopInteractionCoordinator(
                 new GlobalPointerMonitor(interactionNative),
@@ -184,10 +191,32 @@ public partial class App : Application
     {
         _mainWindow?.ShowMenu(_session.IsLoggedIn,
             _positionController?.IsEditing == true,
+            ShowSettings,
             ShowScheduleOverview,
             ShowLogin,
             () => RunBackground(() => _session.LogoutAsync(_lifetime.Token)),
             BeginPositionEdit, CompletePositionEdit, CancelPositionEdit);
+    }
+
+    private void ShowSettings()
+    {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+        if (_settingsViewModel is null) return;
+        var window = _settingsWindow = new SettingsWindow(_settingsViewModel);
+        window.Closed += OnSettingsClosed;
+        window.Show();
+        window.Activate();
+    }
+
+    private void OnSettingsClosed(object? sender, EventArgs eventArgs)
+    {
+        if (_settingsWindow is not { } window) return;
+        window.Closed -= OnSettingsClosed;
+        _settingsWindow = null;
     }
 
     private void ShowScheduleOverview()
@@ -241,6 +270,7 @@ public partial class App : Application
         }
         _positionController.BeginEditing(_windowHost.Bounds);
         _mainWindow?.SetBoundsEditing(true);
+        RefreshTrayMenuState();
     }
 
     private void CompletePositionEdit()
@@ -263,6 +293,7 @@ public partial class App : Application
         }
         _positionController.EndEditing();
         _mainWindow?.SetBoundsEditing(false);
+        RefreshTrayMenuState();
     }
 
     private void CancelPositionEdit()
@@ -277,6 +308,23 @@ public partial class App : Application
         }
         _positionController.EndEditing();
         _mainWindow?.SetBoundsEditing(false);
+        RefreshTrayMenuState();
+    }
+
+    private bool ApplyDefaultWindowBounds(PixelRect bounds)
+    {
+        if (_windowHost is null || _positionController is null) return false;
+        WindowTransitionResult result = _windowHost.TryCommitDesktop(bounds);
+        if (!result.Success)
+        {
+            _mainWindow?.SetBoundsEditError(result.Message);
+            return false;
+        }
+        if (_positionController.IsEditing)
+            _positionController.EndEditing();
+        _mainWindow?.SetBoundsEditing(false);
+        RefreshTrayMenuState();
+        return true;
     }
 
     private void OnRealtimeSync(object? sender, EventArgs eventArgs) =>
@@ -347,6 +395,11 @@ public partial class App : Application
 
     private void OnSessionChanged(object? sender, EventArgs eventArgs)
     {
+        Dispatcher.UIThread.Post(() =>
+        {
+            _settingsViewModel?.UpdateSession(_session.IsLoggedIn);
+            RefreshTrayMenuState();
+        });
         if (_initializing) return;
         _calendar?.SetSynchronizationAvailability(_session.IsLoggedIn);
         RunBackground(ApplySessionChangeAsync);
@@ -379,9 +432,35 @@ public partial class App : Application
 
     private void CreateTrayIcon()
     {
+        var settings = new NativeMenuItem("설정");
+        settings.Click += (_, _) => ShowSettings();
+        var overview = new NativeMenuItem("일정 모아보기");
+        overview.Click += (_, _) => ShowScheduleOverview();
+        _trayPositionItem = new NativeMenuItem("달력 위치 및 크기 수정");
+        _trayPositionItem.Click += (_, _) =>
+        {
+            if (_positionController?.IsEditing == true)
+                CompletePositionEdit();
+            else
+                BeginPositionEdit();
+        };
+        _trayAuthenticationItem = new NativeMenuItem(
+            _settingsViewModel?.AuthenticationMenuText ?? "로그인 / 회원가입");
+        _trayAuthenticationItem.Click += (_, _) =>
+        {
+            if (_session.IsLoggedIn)
+                RunBackground(() => _session.LogoutAsync(_lifetime.Token));
+            else
+                ShowLogin();
+        };
         var exit = new NativeMenuItem("종료");
         exit.Click += async (_, _) => await RequestShutdownAsync();
         var menu = new NativeMenu();
+        menu.Add(settings);
+        menu.Add(overview);
+        menu.Add(_trayPositionItem);
+        menu.Add(_trayAuthenticationItem);
+        menu.Add(new NativeMenuItemSeparator());
         menu.Add(exit);
         _trayIcon = new TrayIcon
         {
@@ -391,6 +470,18 @@ public partial class App : Application
                 "avares://HmDesktopCalendar/Assets/avalonia-logo.ico")))
         };
         TrayIcon.SetIcons(this, new TrayIcons { _trayIcon });
+    }
+
+    private void RefreshTrayMenuState()
+    {
+        if (_trayAuthenticationItem is not null)
+            _trayAuthenticationItem.Header =
+                _settingsViewModel?.AuthenticationMenuText ??
+                (_session.IsLoggedIn ? "로그아웃" : "로그인 / 회원가입");
+        if (_trayPositionItem is not null)
+            _trayPositionItem.Header = _positionController?.IsEditing == true
+                ? "위치 및 크기 저장"
+                : "달력 위치 및 크기 수정";
     }
 
     public async Task RequestShutdownAsync()
@@ -437,6 +528,7 @@ public partial class App : Application
 
         _editor?.CloseWithoutConfirmation();
         _overviewWindow?.Close();
+        _settingsWindow?.Close();
         _loginWindow?.Close();
         _interaction?.Dispose();
         _windowHost?.Dispose();

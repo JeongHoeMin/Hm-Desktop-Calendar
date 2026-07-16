@@ -41,6 +41,8 @@ internal static class Program
             ("앱 설정은 기존 창 위치 JSON을 호환한다", AppSettingsLoadLegacyBounds),
             ("앱 설정은 원자 저장과 변경 알림을 제공한다", AppSettingsRoundTripAndNotify),
             ("손상된 앱 설정은 기본값으로 복구한다", AppSettingsFallbackFromCorruption),
+            ("설정 화면은 창 위치를 즉시 초기화하고 저장한다", SettingsResetWindowBounds),
+            ("설정 메뉴는 세션 상태에 맞는 문구를 표시한다", SettingsMenuTracksSession),
             ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
@@ -752,6 +754,46 @@ internal static class Program
                    store.Current == new AppSettings(),
                 "손상된 설정 파일에서 기본값으로 복구하지 못했습니다.");
         });
+
+    private static void SettingsResetWindowBounds() =>
+        WithTempDirectory(directory =>
+        {
+            string path = Path.Combine(directory, "settings.json");
+            var store = new CalendarSettingsStore(path);
+            store.Save(new Avalonia.PixelRect(-320, 40, 760, 520));
+            Avalonia.PixelRect applied = default;
+            var viewModel = new SettingsViewModel("2.3.4", store, bounds =>
+            {
+                applied = bounds;
+                return true;
+            });
+
+            bool reset = viewModel.ResetWindowPosition();
+            Avalonia.PixelRect restored = new CalendarSettingsStore(path)
+                .Load(980, 680);
+
+            Assert(reset && applied == SettingsViewModel.DefaultWindowBounds &&
+                   restored == SettingsViewModel.DefaultWindowBounds,
+                "창 위치 초기화가 적용과 영구 저장을 함께 수행하지 못했습니다.");
+            Assert(viewModel.HasStatus && !viewModel.HasError,
+                "창 위치 초기화 성공 상태를 표시하지 못했습니다.");
+        });
+
+    private static void SettingsMenuTracksSession()
+    {
+        WithTempDirectory(directory =>
+        {
+            var viewModel = new SettingsViewModel("1.0.0",
+                new CalendarSettingsStore(Path.Combine(directory,
+                    "settings.json")), _ => true);
+
+            Assert(viewModel.AuthenticationMenuText == "로그인 / 회원가입",
+                "로그아웃 상태의 메뉴 문구가 올바르지 않습니다.");
+            viewModel.UpdateSession(true);
+            Assert(viewModel.AuthenticationMenuText == "로그아웃",
+                "로그인 상태의 메뉴 문구가 올바르지 않습니다.");
+        });
+    }
 
     private static void LegacyTextColorIsMigrated() =>
         WithTempDirectory(directory =>
