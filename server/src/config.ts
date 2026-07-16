@@ -12,6 +12,21 @@ export function loadConfig(env = process.env) {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`Invalid ${name}`)
     return value
   }
+  const integer = (name: string, fallback: number) => {
+    const value = number(name, fallback)
+    if (!Number.isSafeInteger(value)) throw new Error(`Invalid ${name}`)
+    return value
+  }
+  const origins = (env.CORS_ALLOWED_ORIGINS ?? '').split(',')
+    .map(value => value.trim()).filter(Boolean).map(value => {
+      let url: URL
+      try { url = new URL(value) } catch { throw new Error('Invalid CORS_ALLOWED_ORIGINS') }
+      if (!['http:', 'https:'].includes(url.protocol) || url.username ||
+        url.password || url.pathname !== '/' || url.search || url.hash) {
+        throw new Error('Invalid CORS_ALLOWED_ORIGINS')
+      }
+      return url.origin
+    })
   const databaseUrl = required('DATABASE_URL')
   const jwtAccessSecret = required('JWT_ACCESS_SECRET')
   const tokenHashSecret = required('TOKEN_HASH_SECRET')
@@ -33,7 +48,12 @@ export function loadConfig(env = process.env) {
     jwtAccessSecret, tokenHashSecret,
     accessTokenTtlMinutes: number('ACCESS_TOKEN_TTL_MINUTES', 15),
     refreshTokenTtlDays: number('REFRESH_TOKEN_TTL_DAYS', 30),
-    host: env.HOST ?? '127.0.0.1', port: number('PORT', 3000), logLevel: env.LOG_LEVEL ?? 'info'
+    bodyLimitBytes: integer('BODY_LIMIT_BYTES', 262144),
+    rateLimitMax: integer('RATE_LIMIT_MAX', 300),
+    authRateLimitMax: integer('AUTH_RATE_LIMIT_MAX', 10),
+    rateLimitWindowMs: integer('RATE_LIMIT_WINDOW_MS', 60000),
+    corsAllowedOrigins: [...new Set(origins)],
+    host: env.HOST ?? '127.0.0.1', port: integer('PORT', 3000), logLevel: env.LOG_LEVEL ?? 'info'
   }
 }
 
