@@ -14,4 +14,8 @@ public partial class SettingsWindow : Window
     private void ResetWindowPosition_OnClick(object? sender,
         RoutedEventArgs eventArgs) =>
         ((SettingsViewModel)DataContext!).ResetWindowPosition();
+
+    private void OpenBackupFolder_OnClick(object? sender,
+        RoutedEventArgs eventArgs) =>
+        ((SettingsViewModel)DataContext!).OpenBackupFolder();
 }

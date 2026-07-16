@@ -18,6 +18,19 @@
       <Border Classes="card" Padding="18">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Spacing="4">
+            <TextBlock Text="로컬 데이터 백업" FontWeight="SemiBold" />
+            <TextBlock Text="일정 데이터를 하루 한 번, 최근 10개까지 자동 보관합니다."
+                       Classes="caption" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding LastBackupText}" Classes="caption" />
+          </StackPanel>
+          <Button Grid.Column="1" Content="백업 폴더 열기" Classes="secondary"
+                  Click="OpenBackupFolder_OnClick" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+      <Border Classes="card" Padding="18">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="4">
             <TextBlock Text="앱 정보" FontWeight="SemiBold" />
             <TextBlock Text="현재 설치된 애플리케이션 버전" Classes="caption" />
           </StackPanel>
