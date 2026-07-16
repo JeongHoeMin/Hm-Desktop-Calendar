@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `docs/restore-inactive-task-directory`
 
 ## 목표
@@ -45,5 +45,5 @@
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `e1da846`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/14
