@@ -2,8 +2,8 @@
 
 ## 상태
 
-- 상태: 비활성
-- 브랜치: 미정
+- 상태: 완료
+- 브랜치: `refactor/app-settings-store`
 
 ## 목표
 
@@ -37,6 +37,8 @@
 
 - 신규 파일·마이그레이션 없이 같은 settings.json을 관대한 역직렬화로
   확장한다. 알 수 없는 필드는 무시하고 누락 필드는 기본값을 쓴다.
+- `SchemaVersion`은 기본값 1인 첫 확장 필드로 두고, 현재는 버전에 따른
+  마이그레이션 분기를 만들지 않는다.
 - 저장소는 단일 인스턴스로 `App`이 소유하고 필요한 창·서비스에 주입한다.
 
 ## 완료 조건
@@ -47,10 +49,15 @@
 
 ## 검증
 
-- 회귀 테스트: 구버전 JSON 로드, 신규 필드 왕복 직렬화, 손상 파일 폴백.
-- `dotnet build`와 기존 회귀 테스트 전체 통과.
+- 구버전 JSON 로드, `SchemaVersion` 왕복 직렬화, 변경 알림, 기존
+  `PixelRect` 저장 시 확장 필드 보존, 원자 저장 임시 파일 정리와 손상 파일
+  폴백 회귀 테스트를 추가했다.
+- `dotnet build tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj --no-restore`
+  성공, 경고 0개·오류 0개.
+- `dotnet run --project tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj --no-build`
+  회귀 테스트 55개 통과.
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `20da0e6`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/19

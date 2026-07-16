@@ -11,6 +11,7 @@ using HmDesktopCalendar.Authentication;
 using HmDesktopCalendar.Calendar;
 using HmDesktopCalendar.DesktopIntegration;
 using HmDesktopCalendar.Reminders;
+using HmDesktopCalendar.Services;
 using HmDesktopCalendar.Todos;
 using HmDesktopCalendar.ViewModels;
 
@@ -37,6 +38,9 @@ internal static class Program
             ("한국 공휴일은 음력과 현행 고정일을 계산한다", KoreanHolidaysMatchKnownDates),
             ("한국 대체공휴일은 충돌 뒤 첫 평일로 이동한다", KoreanSubstituteHolidaysAvoidCollisions),
             ("달력은 공휴일을 새 그리드와 재사용 그리드에 합성한다", CalendarViewModelComposesHolidays),
+            ("앱 설정은 기존 창 위치 JSON을 호환한다", AppSettingsLoadLegacyBounds),
+            ("앱 설정은 원자 저장과 변경 알림을 제공한다", AppSettingsRoundTripAndNotify),
+            ("손상된 앱 설정은 기본값으로 복구한다", AppSettingsFallbackFromCorruption),
             ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
@@ -676,6 +680,78 @@ internal static class Program
             $"연간 공휴일 전체 집합이 다릅니다.\n예상: {string.Join(", ", expected)}" +
             $"\n실제: {string.Join(", ", actual)}");
     }
+
+    private static void AppSettingsLoadLegacyBounds() =>
+        WithTempDirectory(directory =>
+        {
+            string path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path,
+                """{"X":-240,"Y":75,"Width":860,"Height":540,"FutureValue":true}""");
+            var store = new CalendarSettingsStore(path);
+
+            Avalonia.PixelRect bounds = store.Load(980, 680);
+
+            Assert(bounds == new Avalonia.PixelRect(-240, 75, 860, 540),
+                "기존 창 위치 settings.json을 복원하지 못했습니다.");
+            Assert(store.Current.SchemaVersion ==
+                   AppSettings.CurrentSchemaVersion,
+                "누락된 신규 필드의 기본값을 적용하지 못했습니다.");
+        });
+
+    private static void AppSettingsRoundTripAndNotify() =>
+        WithTempDirectory(directory =>
+        {
+            string path = Path.Combine(directory, "settings.json");
+            var store = new CalendarSettingsStore(path);
+            var settings = new AppSettings
+            {
+                SchemaVersion = AppSettings.CurrentSchemaVersion,
+                X = -80,
+                Y = 120,
+                Width = 900,
+                Height = 620
+            };
+            int changeCount = 0;
+            AppSettings? notified = null;
+            store.Changed += (_, eventArgs) =>
+            {
+                changeCount++;
+                notified = eventArgs.Settings;
+            };
+
+            store.Save(settings);
+            store.Save(settings);
+
+            AppSettings loaded = new CalendarSettingsStore(path)
+                .LoadSettings();
+            Assert(loaded == settings && notified == settings &&
+                   changeCount == 1,
+                "확장 설정 왕복 또는 변경 알림이 올바르지 않습니다.");
+            Assert(!Directory.EnumerateFiles(directory, "*.tmp").Any(),
+                "원자 저장 후 임시 파일이 남았습니다.");
+
+            store.Save(new Avalonia.PixelRect(-20, 30, 700, 480));
+            AppSettings resized = new CalendarSettingsStore(path)
+                .LoadSettings();
+            Assert(resized.SchemaVersion == settings.SchemaVersion &&
+                   resized.X == -20 && resized.Y == 30 &&
+                   resized.Width == 700 && resized.Height == 480,
+                "기존 PixelRect 저장 호출이 확장 설정을 보존하지 못했습니다.");
+        });
+
+    private static void AppSettingsFallbackFromCorruption() =>
+        WithTempDirectory(directory =>
+        {
+            string path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, "{ broken json");
+            var store = new CalendarSettingsStore(path);
+
+            Avalonia.PixelRect bounds = store.Load(980, 680);
+
+            Assert(bounds == new Avalonia.PixelRect(100, 100, 980, 680) &&
+                   store.Current == new AppSettings(),
+                "손상된 설정 파일에서 기본값으로 복구하지 못했습니다.");
+        });
 
     private static void LegacyTextColorIsMigrated() =>
         WithTempDirectory(directory =>
