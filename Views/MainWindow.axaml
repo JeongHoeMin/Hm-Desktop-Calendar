@@ -65,11 +65,15 @@
                     Opacity="{Binding CellOpacity}" ClipToBounds="True"
                     AttachedToVisualTree="Day_OnAttachedToVisualTree"
                     DetachedFromVisualTree="Day_OnDetachedFromVisualTree">
-              <Grid RowDefinitions="18,*">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="{DynamicResource SocarCalendarCellHeaderHeight}" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
                 <Border Grid.RowSpan="2" Background="{Binding CellBackgroundBrush}"
                         CornerRadius="5" IsHitTestVisible="False" />
                 <Grid ColumnDefinitions="Auto,*">
-                  <TextBlock Text="{Binding DayText}" FontSize="14" FontWeight="SemiBold"
+                  <TextBlock Text="{Binding DayText}" FontSize="{DynamicResource SocarCalendarDayFontSize}" FontWeight="SemiBold"
                              Foreground="{Binding DayForegroundBrush, TargetNullValue={DynamicResource SocarTextPrimaryBrush}}"
                              VerticalAlignment="Center"/>
                   <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
@@ -77,29 +81,29 @@
                     <Border IsVisible="{Binding IsHoliday}" Background="#FFE9EC"
                             CornerRadius="4" Padding="4,0" MaxWidth="92">
                       <TextBlock Text="{Binding HolidayName}" Foreground="#C8102E"
-                                 FontSize="9" FontWeight="SemiBold"
+                                 FontSize="{DynamicResource SocarCalendarBadgeFontSize}" FontWeight="SemiBold"
                                  TextTrimming="CharacterEllipsis"/>
                     </Border>
                     <TextBlock Text="{Binding IncompleteText}" IsVisible="{Binding HasIncomplete}"
                                Foreground="{Binding CellForegroundBrush}"
-                               FontSize="9.5" FontWeight="SemiBold"/>
+                               FontSize="{DynamicResource SocarCalendarCountFontSize}" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding CompletedText}" IsVisible="{Binding HasCompleted}"
-                               Foreground="{Binding CellForegroundBrush}" FontSize="9.5"/>
+                               Foreground="{Binding CellForegroundBrush}" FontSize="{DynamicResource SocarCalendarCountFontSize}"/>
                   </StackPanel>
                 </Grid>
                 <StackPanel Grid.Row="1" Spacing="0">
                   <ItemsControl ItemsSource="{Binding VisibleTasks}">
                     <ItemsControl.ItemTemplate><DataTemplate>
-                      <Grid Height="16" ColumnDefinitions="36,Auto,4,*" Opacity="{Binding Opacity}">
-                        <TextBlock Text="{Binding TimeText}" FontSize="10" FontWeight="Bold"
+                      <Grid Height="{DynamicResource SocarCalendarTaskRowHeight}" ColumnDefinitions="36,Auto,4,*" Opacity="{Binding Opacity}">
+                        <TextBlock Text="{Binding TimeText}" FontSize="{DynamicResource SocarCalendarTimeFontSize}" FontWeight="Bold"
                                    Classes="schedule-time" VerticalAlignment="Center"/>
                         <Border Grid.Column="1" IsVisible="{Binding IsAnniversary}"
                                 Background="#E8F1FF" CornerRadius="4" Padding="4,0"
                                 VerticalAlignment="Center">
                           <TextBlock Text="{Binding BadgeText}" Foreground="#0041E6"
-                                     FontSize="9" FontWeight="Bold"/>
+                                     FontSize="{DynamicResource SocarCalendarBadgeFontSize}" FontWeight="Bold"/>
                         </Border>
-                        <TextBlock Grid.Column="3" Text="{Binding Title}" FontSize="11"
+                        <TextBlock Grid.Column="3" Text="{Binding Title}" FontSize="{DynamicResource SocarCalendarTaskFontSize}"
                                    TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                    Foreground="{Binding TextBrush}"
                                    TextDecorations="{Binding TitleDecorations}"
@@ -107,8 +111,8 @@
                       </Grid>
                     </DataTemplate></ItemsControl.ItemTemplate>
                   </ItemsControl>
-                  <TextBlock Height="16" Text="{Binding HiddenText}"
-                             IsVisible="{Binding HasHiddenTasks}" FontSize="10"
+                  <TextBlock Height="{DynamicResource SocarCalendarTaskRowHeight}" Text="{Binding HiddenText}"
+                             IsVisible="{Binding HasHiddenTasks}" FontSize="{DynamicResource SocarCalendarMoreFontSize}"
                              Classes="schedule-more" FontWeight="SemiBold"
                              VerticalAlignment="Center"/>
                 </StackPanel>

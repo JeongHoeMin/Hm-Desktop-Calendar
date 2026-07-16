@@ -35,6 +35,43 @@
       <Border Classes="card" Padding="18">
         <Grid RowDefinitions="Auto,14,Auto,14,Auto">
           <StackPanel Spacing="4">
+            <TextBlock Text="외형" FontWeight="SemiBold" />
+            <TextBlock Text="달력 글자 크기와 배경 투명도를 조절합니다."
+                       Classes="caption" TextWrapping="Wrap" />
+          </StackPanel>
+          <Grid Grid.Row="2" ColumnDefinitions="*,180">
+            <StackPanel Spacing="3" VerticalAlignment="Center">
+              <TextBlock Text="글자 크기" FontWeight="SemiBold" />
+              <TextBlock Text="달력 헤더와 날짜 셀에 적용" Classes="caption" />
+            </StackPanel>
+            <ComboBox Grid.Column="1"
+                      SelectedIndex="{Binding FontScaleIndex, Mode=TwoWay}">
+              <ComboBoxItem Content="작게 (90%)" />
+              <ComboBoxItem Content="보통 (100%)" />
+              <ComboBoxItem Content="크게 (115%)" />
+            </ComboBox>
+          </Grid>
+          <Grid Grid.Row="4" ColumnDefinitions="*,180">
+            <StackPanel Spacing="3" VerticalAlignment="Center">
+              <TextBlock Text="배경 불투명도" FontWeight="SemiBold" />
+              <TextBlock Text="달력 프레임과 날짜 셀에만 적용" Classes="caption" />
+            </StackPanel>
+            <Grid Grid.Column="1" ColumnDefinitions="*,44">
+              <Slider Minimum="0.5" Maximum="1" TickFrequency="0.05"
+                      IsSnapToTickEnabled="True"
+                      Value="{Binding BackgroundOpacity, Mode=TwoWay}"
+                      VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Text="{Binding BackgroundOpacityText}"
+                         HorizontalAlignment="Right" VerticalAlignment="Center"
+                         FontWeight="SemiBold" />
+            </Grid>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <Border Classes="card" Padding="18">
+        <Grid RowDefinitions="Auto,14,Auto,14,Auto">
+          <StackPanel Spacing="4">
             <TextBlock Text="달력 표시" FontWeight="SemiBold" />
             <TextBlock Text="요일 순서와 주말 날짜 숫자 색을 설정합니다."
                        Classes="caption" TextWrapping="Wrap" />
@@ -81,7 +118,7 @@
         </Grid>
       </Border>
 
-      <TextBlock Text="테마, 자동 시작 등의 설정은 이후 업데이트에서 이 화면에 추가됩니다."
+      <TextBlock Text="자동 시작 등의 설정은 이후 업데이트에서 이 화면에 추가됩니다."
                  Classes="caption" TextWrapping="Wrap" Margin="4,0" />
     </StackPanel>
     </ScrollViewer>

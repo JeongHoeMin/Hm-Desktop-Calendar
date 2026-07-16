@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using HmDesktopCalendar.Authentication;
@@ -83,12 +84,14 @@ public partial class App : Application
                 MainWindow.CalendarHeight);
             _calendar.SetDisplayOptions(_settings.Current.WeekStart,
                 _settings.Current.ColorWeekends);
+            ApplyCalendarAppearance(_settings.Current.FontScale,
+                _settings.Current.BackgroundOpacity);
             _windowHost = new DesktopCalendarWindowCoordinator(window, saved);
             _positionController = new CalendarBoundsController();
             _settingsViewModel = new SettingsViewModel(
                 typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0",
                 _settings, ApplyDefaultWindowBounds, _session.IsLoggedIn,
-                ApplyCalendarDisplayOptions);
+                ApplyCalendarDisplayOptions, ApplyCalendarAppearance);
             var interactionNative = new Win32WindowNativeApi();
             _interaction = new DesktopInteractionCoordinator(
                 new GlobalPointerMonitor(interactionNative),
@@ -336,6 +339,28 @@ public partial class App : Application
         if (_calendar?.SetDisplayOptions(weekStart, colorWeekends) != true)
             return;
         RunBackground(_calendar.RefreshAsync);
+    }
+
+    private void ApplyCalendarAppearance(CalendarFontScale fontScale,
+        double backgroundOpacity)
+    {
+        CalendarAppearanceTokens tokens = CalendarAppearance.Create(fontScale,
+            backgroundOpacity);
+        Resources["SocarCalendarHeaderFontSize"] = tokens.HeaderFontSize;
+        Resources["SocarCalendarWeekdayFontSize"] = tokens.WeekdayFontSize;
+        Resources["SocarCalendarDayFontSize"] = tokens.DayFontSize;
+        Resources["SocarCalendarBadgeFontSize"] = tokens.BadgeFontSize;
+        Resources["SocarCalendarCountFontSize"] = tokens.CountFontSize;
+        Resources["SocarCalendarTimeFontSize"] = tokens.TimeFontSize;
+        Resources["SocarCalendarTaskFontSize"] = tokens.TaskFontSize;
+        Resources["SocarCalendarMoreFontSize"] = tokens.MoreFontSize;
+        Resources["SocarCalendarCellHeaderHeight"] =
+            tokens.CellHeaderHeight;
+        Resources["SocarCalendarTaskRowHeight"] = tokens.TaskRowHeight;
+        Resources["SocarCalendarSurfaceBrush"] = new SolidColorBrush(
+            Color.Parse("#F7F9FC")) { Opacity = tokens.BackgroundOpacity };
+        Resources["SocarCalendarCellBrush"] = new SolidColorBrush(
+            Colors.White) { Opacity = tokens.BackgroundOpacity };
     }
 
     private void OnRealtimeSync(object? sender, EventArgs eventArgs) =>

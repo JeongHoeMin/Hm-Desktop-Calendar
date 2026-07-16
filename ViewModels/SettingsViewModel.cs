@@ -12,6 +12,7 @@ public sealed class SettingsViewModel : ViewModelBase
     private readonly CalendarSettingsStore _settings;
     private readonly Func<PixelRect, bool> _applyWindowBounds;
     private readonly Action<CalendarWeekStart, bool>? _applyDisplayOptions;
+    private readonly Action<CalendarFontScale, double>? _applyAppearance;
     private bool _isLoggedIn;
     private string _statusMessage = string.Empty;
     private bool _hasError;
@@ -19,13 +20,15 @@ public sealed class SettingsViewModel : ViewModelBase
     public SettingsViewModel(string appVersion,
         CalendarSettingsStore settings,
         Func<PixelRect, bool> applyWindowBounds, bool isLoggedIn = false,
-        Action<CalendarWeekStart, bool>? applyDisplayOptions = null)
+        Action<CalendarWeekStart, bool>? applyDisplayOptions = null,
+        Action<CalendarFontScale, double>? applyAppearance = null)
     {
         AppVersion = appVersion;
         _settings = settings;
         _applyWindowBounds = applyWindowBounds;
         _isLoggedIn = isLoggedIn;
         _applyDisplayOptions = applyDisplayOptions;
+        _applyAppearance = applyAppearance;
     }
 
     public string AppVersion { get; }
@@ -68,6 +71,36 @@ public sealed class SettingsViewModel : ViewModelBase
             OnPropertyChanged();
         }
     }
+    public int FontScaleIndex
+    {
+        get => (int)_settings.Current.FontScale;
+        set
+        {
+            if (value is < 0 or > 2) return;
+            var fontScale = (CalendarFontScale)value;
+            if (_settings.Current.FontScale == fontScale) return;
+            if (!TrySaveAppearance(_settings.Current with
+                { FontScale = fontScale })) return;
+            OnPropertyChanged();
+        }
+    }
+    public double BackgroundOpacity
+    {
+        get => _settings.Current.BackgroundOpacity;
+        set
+        {
+            double opacity = Math.Round(Math.Clamp(value,
+                CalendarAppearance.MinimumOpacity,
+                CalendarAppearance.MaximumOpacity), 2);
+            if (Math.Abs(_settings.Current.BackgroundOpacity - opacity) <
+                0.001) return;
+            if (!TrySaveAppearance(_settings.Current with
+                { BackgroundOpacity = opacity })) return;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BackgroundOpacityText));
+        }
+    }
+    public string BackgroundOpacityText => $"{BackgroundOpacity:P0}";
 
     public void UpdateSession(bool isLoggedIn)
     {
@@ -103,6 +136,22 @@ public sealed class SettingsViewModel : ViewModelBase
             _settings.Save(settings);
             _applyDisplayOptions?.Invoke(settings.WeekStart,
                 settings.ColorWeekends);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"설정 저장 실패: {exception.Message}", true);
+            return false;
+        }
+    }
+
+    private bool TrySaveAppearance(AppSettings settings)
+    {
+        try
+        {
+            _settings.Save(settings);
+            _applyAppearance?.Invoke(settings.FontScale,
+                settings.BackgroundOpacity);
             return true;
         }
         catch (Exception exception)
