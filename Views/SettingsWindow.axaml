@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HmDesktopCalendar.Views.SettingsWindow"
+        x:CompileBindings="False"
+        Classes="dialog"
+        Width="560" Height="410" MinWidth="480" MinHeight="360"
+        Title="설정" WindowStartupLocation="CenterScreen"
+        Topmost="True">
+  <Grid Margin="24" RowDefinitions="Auto,20,*">
+    <StackPanel Spacing="4">
+      <TextBlock Text="설정" Classes="title" />
+      <TextBlock Text="HmDesktopCalendar의 동작과 표시 방식을 관리합니다. 변경 사항은 즉시 적용됩니다."
+                 Classes="caption" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="2" Spacing="16">
+      <Border Classes="card" Padding="18">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="4">
+            <TextBlock Text="앱 정보" FontWeight="SemiBold" />
+            <TextBlock Text="현재 설치된 애플리케이션 버전" Classes="caption" />
+          </StackPanel>
+          <Border Grid.Column="1"
+                  Background="{DynamicResource SocarPrimarySoftBrush}"
+                  CornerRadius="8" Padding="12,6"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding AppVersion, StringFormat='v{0}'}"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource SocarPrimaryPressedBrush}" />
+          </Border>
+        </Grid>
+      </Border>
+
+      <Border Classes="card" Padding="18">
+        <Grid RowDefinitions="Auto,14,Auto">
+          <StackPanel Spacing="4">
+            <TextBlock Text="달력 창 위치" FontWeight="SemiBold" />
+            <TextBlock Text="달력의 위치와 크기를 처음 실행할 때의 기본값으로 되돌립니다."
+                       Classes="caption" TextWrapping="Wrap" />
+          </StackPanel>
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+            <TextBlock Text="{Binding StatusMessage}"
+                       IsVisible="{Binding HasStatus}"
+                       Classes="caption" TextWrapping="Wrap"
+                       VerticalAlignment="Center" Margin="0,0,12,0" />
+            <Button Grid.Column="1" Content="위치 초기화" Classes="secondary"
+                    Click="ResetWindowPosition_OnClick" />
+          </Grid>
+        </Grid>
+      </Border>
+
+      <TextBlock Text="표시, 테마, 자동 시작 등의 설정은 이후 업데이트에서 이 화면에 추가됩니다."
+                 Classes="caption" TextWrapping="Wrap" Margin="4,0" />
+    </StackPanel>
+  </Grid>
+</Window>

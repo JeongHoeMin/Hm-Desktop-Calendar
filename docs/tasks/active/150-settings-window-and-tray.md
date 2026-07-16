@@ -2,8 +2,8 @@
 
 ## 상태
 
-- 상태: 비활성
-- 브랜치: 미정
+- 상태: 활성
+- 브랜치: `feat/settings-window-and-tray`
 
 ## 목표
 
@@ -37,6 +37,8 @@
   `NativeMenuItem` 표시를 갱신한다.
 - 설정 창은 즉시 적용 방식이다(확인/취소 버튼 없음). 각 항목이 변경 즉시
   설정 저장소에 저장한다.
+- 설정 파일에는 이후 작업의 다른 항목도 함께 저장되므로 위치 초기화 시 파일 전체를
+  삭제하지 않고 기본 Bounds `(100, 100, 980, 680)`를 즉시 적용·저장한다.
 
 ## 완료 조건
 
@@ -49,6 +51,18 @@
 - 뷰모델 단위 테스트(위치 초기화, 세션 상태에 따른 메뉴 문구).
 - 트레이 UI는 자동화가 불가하므로 수동 확인 항목을 PR에 기록한다.
 - UI 변경이므로 PR에 스크린샷을 포함한다.
+
+### 실행 결과
+
+- `dotnet build HmDesktopCalendar.csproj -c Debug`: 성공(경고 0, 오류 0).
+- `dotnet run --project tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj -c Debug`:
+  57개 회귀 테스트 성공.
+- Windows UI 자동화로 설정 창의 앱 버전, 위치 초기화 버튼, 접근성 요소와 560×410
+  레이아웃을 확인했다.
+- 스크린샷: `docs/screenshots/150/150-settings-window.png`.
+- 작업 표시줄 알림 영역은 자동화 대상 창으로 노출되지 않아 실제 트레이 클릭은
+  수행하지 못했다. 트레이 메뉴 항목과 각 핸들러 연결, 세션 변경 시 문구 갱신 경로는
+  코드 검토와 빌드로 확인했다.
 
 ## 작업 결과
 
