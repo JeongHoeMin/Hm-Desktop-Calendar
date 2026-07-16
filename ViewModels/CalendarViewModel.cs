@@ -7,8 +7,16 @@ using System.Threading;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using HmDesktopCalendar.Calendar;
+using HmDesktopCalendar.Services;
 
 namespace HmDesktopCalendar.ViewModels;
+
+public sealed record CalendarWeekdayViewModel(string Text,
+    DayOfWeek Day)
+{
+    public bool IsSunday => Day == DayOfWeek.Sunday;
+    public bool IsSaturday => Day == DayOfWeek.Saturday;
+}
 
 public sealed partial class CalendarViewModel : ViewModelBase
 {
@@ -18,6 +26,8 @@ public sealed partial class CalendarViewModel : ViewModelBase
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private CalendarMonth _month;
     private int _taskRowCapacity = 3;
+    private CalendarWeekStart _weekStart = CalendarWeekStart.Sunday;
+    private bool _colorWeekends = true;
 
     [ObservableProperty] private string _displayMonth = string.Empty;
     [ObservableProperty] private string _displayYear = string.Empty;
@@ -26,6 +36,8 @@ public sealed partial class CalendarViewModel : ViewModelBase
     [ObservableProperty] private string _synchronizationStatus = "로컬 전용";
     [ObservableProperty] private bool _isSynchronizing;
     [ObservableProperty] private bool _isSynchronizationFailed;
+    public ObservableCollection<CalendarWeekdayViewModel> WeekdayHeaders
+        { get; } = [];
     private DateTimeOffset? _lastSuccessfulSynchronization;
 
     public CalendarViewModel(ICalendarRepository repository) : this(repository,
@@ -41,10 +53,23 @@ public sealed partial class CalendarViewModel : ViewModelBase
         _updateUi = updateUi;
         DateTime today = _todayProvider();
         _month = new CalendarMonth(today.Year, today.Month);
+        RebuildWeekdayHeaders();
     }
 
     public int CurrentYear => _month.FirstDay.Year;
     public int CurrentMonth => _month.FirstDay.Month;
+
+    public bool SetDisplayOptions(CalendarWeekStart weekStart,
+        bool colorWeekends)
+    {
+        bool weekStartChanged = _weekStart != weekStart;
+        bool changed = weekStartChanged || _colorWeekends != colorWeekends;
+        if (!changed) return false;
+        _weekStart = weekStart;
+        _colorWeekends = colorWeekends;
+        if (weekStartChanged) RebuildWeekdayHeaders();
+        return true;
+    }
 
     public Task InitializeAsync() => RefreshAsync();
     public async Task PreviousMonthAsync() { _month = _month.Previous(); await RefreshAsync(); }
@@ -115,7 +140,10 @@ public sealed partial class CalendarViewModel : ViewModelBase
         try
         {
             CalendarMonth month = _month;
-            var dates = month.GetDates();
+            CalendarWeekStart weekStart = _weekStart;
+            bool colorWeekends = _colorWeekends;
+            var dates = month.GetDates(weekStart == CalendarWeekStart.Monday
+                ? DayOfWeek.Monday : DayOfWeek.Sunday);
             IReadOnlyDictionary<DateOnly, string> holidayNames =
                 KoreanHolidayCalculator.GetHolidayNames(dates[0], dates[^1]);
             Task<IReadOnlyList<CalendarOccurrence>> occurrenceTask =
@@ -160,7 +188,7 @@ public sealed partial class CalendarViewModel : ViewModelBase
                     taskRows,
                     _taskRowCapacity,
                     backgrounds.GetValueOrDefault(date),
-                    holidayNames.GetValueOrDefault(date)));
+                    holidayNames.GetValueOrDefault(date), colorWeekends));
             }
             await _updateUi(() =>
             {
@@ -181,7 +209,8 @@ public sealed partial class CalendarViewModel : ViewModelBase
                             source.IncompleteCount, source.CompletedCount,
                             source.AllTasks,
                             backgrounds.GetValueOrDefault(source.Date),
-                            holidayNames.GetValueOrDefault(source.Date));
+                            holidayNames.GetValueOrDefault(source.Date),
+                            colorWeekends);
                     }
                 }
                 DisplayMonth = month.DisplayName;
@@ -192,6 +221,28 @@ public sealed partial class CalendarViewModel : ViewModelBase
             });
         }
         finally { _refreshGate.Release(); }
+    }
+
+    private void RebuildWeekdayHeaders()
+    {
+        DayOfWeek first = _weekStart == CalendarWeekStart.Monday
+            ? DayOfWeek.Monday : DayOfWeek.Sunday;
+        WeekdayHeaders.Clear();
+        for (int offset = 0; offset < 7; offset++)
+        {
+            DayOfWeek day = (DayOfWeek)(((int)first + offset) % 7);
+            WeekdayHeaders.Add(new CalendarWeekdayViewModel(day switch
+            {
+                DayOfWeek.Sunday => "일",
+                DayOfWeek.Monday => "월",
+                DayOfWeek.Tuesday => "화",
+                DayOfWeek.Wednesday => "수",
+                DayOfWeek.Thursday => "목",
+                DayOfWeek.Friday => "금",
+                DayOfWeek.Saturday => "토",
+                _ => string.Empty
+            }, day));
+        }
     }
 
     private static async Task UpdateOnUiThreadAsync(Action update) =>
