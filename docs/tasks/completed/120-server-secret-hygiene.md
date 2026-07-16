@@ -2,8 +2,8 @@
 
 ## 상태
 
-- 상태: 비활성
-- 브랜치: 미정
+- 상태: 완료
+- 브랜치: `fix/server-secret-hygiene`
 
 ## 목표
 
@@ -50,10 +50,15 @@
 
 ## 검증
 
-- config 검증 케이스를 서버 단위 테스트로 추가하고 `pnpm test`를 실행한다.
-- `git grep`으로 노출 문자열 잔존 여부를 확인한다.
+- config 검증 케이스 5개를 추가했다. `pnpm test` 실행 결과 서버 테스트 14개가
+  통과했다.
+- `pnpm build` 실행 결과 TypeScript 빌드가 성공했다.
+- `rg -n "19\\.19\\.20\\.89" .` 실행 결과 이 작업 문서의 완료 조건 문구 외
+  잔존 문자열이 없음을 확인했다.
+- `git diff --check` 실행 결과 공백 오류가 없음을 확인했다.
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `40cd10f`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/17
+- 저장소에 노출됐던 DB 자격 증명의 회전 완료 여부: 사용자 확인 필요

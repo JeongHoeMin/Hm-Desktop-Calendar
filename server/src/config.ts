@@ -12,11 +12,39 @@ export function loadConfig(env = process.env) {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`Invalid ${name}`)
     return value
   }
+  const databaseUrl = required('DATABASE_URL')
+  const jwtAccessSecret = required('JWT_ACCESS_SECRET')
+  const tokenHashSecret = required('TOKEN_HASH_SECRET')
+
+  if (env.NODE_ENV === 'production') {
+    if (isPlaceholderDatabaseUrl(databaseUrl)) {
+      throw new Error('운영 환경에서는 placeholder DATABASE_URL을 사용할 수 없습니다.')
+    }
+    if (jwtAccessSecret.startsWith('replace-with')) {
+      throw new Error('운영 환경에서는 placeholder JWT_ACCESS_SECRET을 사용할 수 없습니다.')
+    }
+    if (tokenHashSecret.startsWith('replace-with')) {
+      throw new Error('운영 환경에서는 placeholder TOKEN_HASH_SECRET을 사용할 수 없습니다.')
+    }
+  }
+
   return {
-    databaseUrl: required('DATABASE_URL'), databaseSsl: env.DATABASE_SSL === 'true',
-    jwtAccessSecret: required('JWT_ACCESS_SECRET'), tokenHashSecret: required('TOKEN_HASH_SECRET'),
+    databaseUrl, databaseSsl: env.DATABASE_SSL === 'true',
+    jwtAccessSecret, tokenHashSecret,
     accessTokenTtlMinutes: number('ACCESS_TOKEN_TTL_MINUTES', 15),
     refreshTokenTtlDays: number('REFRESH_TOKEN_TTL_DAYS', 30),
     host: env.HOST ?? '127.0.0.1', port: number('PORT', 3000), logLevel: env.LOG_LEVEL ?? 'info'
+  }
+}
+
+function isPlaceholderDatabaseUrl(value: string) {
+  if (value.toLowerCase().includes('change-me')) return true
+
+  try {
+    const url = new URL(value)
+    return decodeURIComponent(url.username).toLowerCase() === 'postgres'
+      && decodeURIComponent(url.password).toLowerCase() === 'postgres'
+  } catch {
+    return false
   }
 }
