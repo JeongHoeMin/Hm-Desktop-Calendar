@@ -19,6 +19,9 @@
 
 통합 테스트와 실제 실행에는 `.env`의 PostgreSQL 인스턴스가 필요합니다.
 
+Docker Compose를 이용한 운영 배포, TLS 리버스 프록시, API 스모크 확인, PostgreSQL
+백업·복원 절차는 [`docs/deployment.md`](docs/deployment.md)를 따른다.
+
 ## 서버 보안 설정
 
 - 모든 응답에 `@fastify/helmet`의 기본 보안 헤더를 적용한다.
