@@ -34,6 +34,9 @@ internal static class Program
             ("Explorer 재시작은 새 호스트에 정확히 재부착한다", ExplorerRestartReattaches),
             ("화면과 겹치는 음수 좌표는 복구하지 않는다", VisibleNegativeBoundsArePreserved),
             ("달력 ViewModel이 연도와 월을 독립적으로 이동한다", CalendarViewModelMovesPredictably),
+            ("한국 공휴일은 음력과 현행 고정일을 계산한다", KoreanHolidaysMatchKnownDates),
+            ("한국 대체공휴일은 충돌 뒤 첫 평일로 이동한다", KoreanSubstituteHolidaysAvoidCollisions),
+            ("달력은 공휴일을 새 그리드와 재사용 그리드에 합성한다", CalendarViewModelComposesHolidays),
             ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
@@ -539,6 +542,140 @@ internal static class Program
                 .UpsertDecorationAsync(decoration).GetAwaiter().GetResult(),
                 "잘못된 날짜 배경 HEX를 저장했습니다.");
         });
+
+    private static void KoreanHolidaysMatchKnownDates()
+    {
+        IReadOnlyList<KoreanHoliday> holidays2025 =
+            KoreanHolidayCalculator.GetHolidays(2025);
+        IReadOnlyList<KoreanHoliday> holidays2026 =
+            KoreanHolidayCalculator.GetHolidays(2026);
+
+        AssertHoliday(holidays2025, new DateOnly(2025, 1, 28), "설날");
+        AssertHoliday(holidays2025, new DateOnly(2025, 1, 29), "설날");
+        AssertHoliday(holidays2025, new DateOnly(2025, 1, 30), "설날");
+        AssertHoliday(holidays2025, new DateOnly(2025, 5, 5), "어린이날");
+        AssertHoliday(holidays2025, new DateOnly(2025, 5, 5),
+            "부처님오신날");
+        AssertHoliday(holidays2025, new DateOnly(2025, 10, 6), "추석");
+        AssertHoliday(holidays2026, new DateOnly(2026, 2, 17), "설날");
+        AssertHoliday(holidays2026, new DateOnly(2026, 5, 1), "노동절");
+        AssertHoliday(holidays2026, new DateOnly(2026, 7, 17), "제헌절");
+
+        IReadOnlyDictionary<DateOnly, string> names =
+            KoreanHolidayCalculator.GetHolidayNames(
+                new DateOnly(2025, 5, 5), new DateOnly(2025, 5, 5));
+        Assert(names[new DateOnly(2025, 5, 5)] ==
+               "어린이날·부처님오신날",
+            "같은 날 공휴일 이름을 안정적인 순서로 결합하지 못했습니다.");
+        Assert(KoreanHolidayCalculator.GetHolidays(1899).Count == 0 &&
+               KoreanHolidayCalculator.GetHolidays(2051).Count == 0,
+            "지원 범위 밖 연도에서 빈 결과를 반환하지 않았습니다.");
+
+        AssertHolidaySet(holidays2025,
+            "2025-01-01|신정", "2025-01-28|설날", "2025-01-29|설날",
+            "2025-01-30|설날", "2025-03-01|삼일절",
+            "2025-03-03|대체공휴일(삼일절)", "2025-05-01|노동절",
+            "2025-05-05|어린이날", "2025-05-05|부처님오신날",
+            "2025-05-06|대체공휴일(부처님오신날)", "2025-06-06|현충일",
+            "2025-07-17|제헌절", "2025-08-15|광복절",
+            "2025-10-03|개천절", "2025-10-05|추석", "2025-10-06|추석",
+            "2025-10-07|추석", "2025-10-08|대체공휴일(추석)",
+            "2025-10-09|한글날", "2025-12-25|성탄절");
+        AssertHolidaySet(holidays2026,
+            "2026-01-01|신정", "2026-02-16|설날", "2026-02-17|설날",
+            "2026-02-18|설날", "2026-03-01|삼일절",
+            "2026-03-02|대체공휴일(삼일절)", "2026-05-01|노동절",
+            "2026-05-05|어린이날", "2026-05-24|부처님오신날",
+            "2026-05-25|대체공휴일(부처님오신날)", "2026-06-06|현충일",
+            "2026-07-17|제헌절", "2026-08-15|광복절",
+            "2026-08-17|대체공휴일(광복절)", "2026-09-24|추석",
+            "2026-09-25|추석", "2026-09-26|추석", "2026-10-03|개천절",
+            "2026-10-05|대체공휴일(개천절)", "2026-10-09|한글날",
+            "2026-12-25|성탄절");
+    }
+
+    private static void KoreanSubstituteHolidaysAvoidCollisions()
+    {
+        IReadOnlyList<KoreanHoliday> holidays2025 =
+            KoreanHolidayCalculator.GetHolidays(2025);
+        IReadOnlyList<KoreanHoliday> holidays2026 =
+            KoreanHolidayCalculator.GetHolidays(2026);
+        IReadOnlyList<KoreanHoliday> holidays2027 =
+            KoreanHolidayCalculator.GetHolidays(2027);
+
+        AssertHoliday(holidays2025, new DateOnly(2025, 3, 3), "삼일절", true);
+        AssertHoliday(holidays2025, new DateOnly(2025, 5, 6),
+            "부처님오신날", true);
+        AssertHoliday(holidays2025, new DateOnly(2025, 10, 8), "추석", true);
+        AssertHoliday(holidays2026, new DateOnly(2026, 5, 25),
+            "부처님오신날", true);
+        AssertHoliday(holidays2026, new DateOnly(2026, 8, 17), "광복절", true);
+        AssertHoliday(holidays2027, new DateOnly(2027, 5, 3), "노동절", true);
+        AssertHoliday(holidays2027, new DateOnly(2027, 7, 19), "제헌절", true);
+    }
+
+    private static void CalendarViewModelComposesHolidays()
+    {
+        var repository = new InMemoryCalendarRepository();
+        DateOnly chuseok = new(2025, 10, 6);
+        repository.UpsertDecorationAsync(new DateCellDecoration
+        {
+            Id = CalendarCellColor.GetDecorationId(chuseok),
+            Date = chuseok,
+            Kind = DateCellDecorationKind.Highlight,
+            Color = "#141A24"
+        }).GetAwaiter().GetResult();
+        var viewModel = new CalendarViewModel(repository,
+            () => new DateTime(2025, 10, 1), ImmediateUpdate);
+
+        viewModel.InitializeAsync().GetAwaiter().GetResult();
+        CalendarDayViewModel holiday = viewModel.Days.Single(day =>
+            day.Date == chuseok);
+        CalendarDayViewModel substitute = viewModel.Days.Single(day =>
+            day.Date == new DateOnly(2025, 10, 8));
+        var foreground = holiday.DayForegroundBrush as
+            Avalonia.Media.SolidColorBrush;
+        var substituteForeground = substitute.DayForegroundBrush as
+            Avalonia.Media.SolidColorBrush;
+        Assert(holiday.IsHoliday && holiday.HolidayName == "추석",
+            "새 달력 그리드에 공휴일을 합성하지 못했습니다.");
+        Assert(substitute.IsHoliday &&
+               substitute.HolidayName == "대체공휴일(추석)",
+            "대체공휴일 표시 이름을 합성하지 못했습니다.");
+        Assert(foreground?.Color == Avalonia.Media.Color.Parse("#FFFFFF"),
+            "사용자 배경색 셀의 전경 우선순위를 지키지 않았습니다.");
+        Assert(substituteForeground?.Color ==
+               Avalonia.Media.Color.Parse("#FF5065"),
+            "배경색이 없는 공휴일 날짜에 빨간 전경을 적용하지 않았습니다.");
+
+        viewModel.RefreshAsync().GetAwaiter().GetResult();
+        CalendarDayViewModel reused = viewModel.Days.Single(day =>
+            day.Date == chuseok);
+        Assert(ReferenceEquals(holiday, reused) && reused.IsHoliday &&
+               reused.HolidayName == "추석",
+            "재사용 달력 그리드 Update 경로가 공휴일을 보존하지 못했습니다.");
+
+        viewModel.SelectYearAsync(2051).GetAwaiter().GetResult();
+        Assert(viewModel.Days.All(day => !day.IsHoliday),
+            "지원 범위 밖 연도로 이동했을 때 공휴일 표시가 남았습니다.");
+    }
+
+    private static void AssertHoliday(IReadOnlyList<KoreanHoliday> holidays,
+        DateOnly date, string name, bool isSubstitute = false) =>
+        Assert(holidays.Any(holiday => holiday.Date == date &&
+                holiday.Name == name && holiday.IsSubstitute == isSubstitute),
+            $"{date:yyyy-MM-dd} {name} 공휴일 계산이 올바르지 않습니다.");
+
+    private static void AssertHolidaySet(
+        IReadOnlyList<KoreanHoliday> holidays, params string[] expected)
+    {
+        string[] actual = holidays.Select(holiday =>
+                $"{holiday.Date:yyyy-MM-dd}|{holiday.DisplayName}")
+            .OrderBy(value => value).ToArray();
+        Assert(actual.SequenceEqual(expected.OrderBy(value => value)),
+            $"연간 공휴일 전체 집합이 다릅니다.\n예상: {string.Join(", ", expected)}" +
+            $"\n실제: {string.Join(", ", actual)}");
+    }
 
     private static void LegacyTextColorIsMigrated() =>
         WithTempDirectory(directory =>

@@ -43,15 +43,18 @@ public sealed class CalendarDayViewModel : ObservableObject
     private int _capacity;
     private int _hiddenCount;
     private string? _backgroundColor;
+    private string? _holidayName;
+    private static readonly IBrush HolidayForegroundBrush =
+        new SolidColorBrush(Color.Parse("#FF5065"));
 
     public CalendarDayViewModel(DateOnly date, bool isCurrentMonth,
         int incompleteCount, int completedCount,
         IReadOnlyList<CalendarTaskPreviewViewModel> allTasks, int capacity,
-        string? backgroundColor = null)
+        string? backgroundColor = null, string? holidayName = null)
     {
         _capacity = capacity;
         Update(date, isCurrentMonth, incompleteCount, completedCount, allTasks,
-            backgroundColor);
+            backgroundColor, holidayName);
     }
 
     public ObservableCollection<CalendarTaskPreviewViewModel> VisibleTasks
@@ -117,6 +120,8 @@ public sealed class CalendarDayViewModel : ObservableObject
     public bool HasIncomplete => IncompleteCount > 0;
     public bool HasCompleted => CompletedCount > 0;
     public bool HasHiddenTasks => HiddenCount > 0;
+    public bool IsHoliday => !string.IsNullOrWhiteSpace(_holidayName);
+    public string HolidayName => _holidayName ?? string.Empty;
     public string HiddenText => $"+{HiddenCount}개 더 있음";
     public double CellOpacity => IsCurrentMonth ? 1.0 : 0.45;
     public IBrush? CellBackgroundBrush => ParseBrush(_backgroundColor);
@@ -131,6 +136,8 @@ public sealed class CalendarDayViewModel : ObservableObject
                 null;
         }
     }
+    public IBrush? DayForegroundBrush => CellForegroundBrush ??
+        (IsHoliday ? HolidayForegroundBrush : null);
 
     public void SetCapacity(int capacity)
     {
@@ -143,7 +150,7 @@ public sealed class CalendarDayViewModel : ObservableObject
     public void Update(DateOnly date, bool isCurrentMonth,
         int incompleteCount, int completedCount,
         IReadOnlyList<CalendarTaskPreviewViewModel> allTasks,
-        string? backgroundColor = null)
+        string? backgroundColor = null, string? holidayName = null)
     {
         Date = date;
         IsCurrentMonth = isCurrentMonth;
@@ -156,6 +163,15 @@ public sealed class CalendarDayViewModel : ObservableObject
             _backgroundColor = backgroundColor;
             OnPropertyChanged(nameof(CellBackgroundBrush));
             OnPropertyChanged(nameof(CellForegroundBrush));
+            OnPropertyChanged(nameof(DayForegroundBrush));
+        }
+        if (!string.Equals(_holidayName, holidayName,
+            StringComparison.Ordinal))
+        {
+            _holidayName = holidayName;
+            OnPropertyChanged(nameof(IsHoliday));
+            OnPropertyChanged(nameof(HolidayName));
+            OnPropertyChanged(nameof(DayForegroundBrush));
         }
         ApplyVisibility();
     }

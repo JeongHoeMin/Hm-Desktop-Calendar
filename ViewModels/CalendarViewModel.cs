@@ -116,6 +116,8 @@ public sealed partial class CalendarViewModel : ViewModelBase
         {
             CalendarMonth month = _month;
             var dates = month.GetDates();
+            IReadOnlyDictionary<DateOnly, string> holidayNames =
+                KoreanHolidayCalculator.GetHolidayNames(dates[0], dates[^1]);
             Task<IReadOnlyList<CalendarOccurrence>> occurrenceTask =
                 _repository.GetOccurrencesByRangeAsync(dates[0], dates[^1]);
             Task<IReadOnlyList<DateCellDecoration>> decorationTask =
@@ -157,7 +159,8 @@ public sealed partial class CalendarViewModel : ViewModelBase
                     completedCount,
                     taskRows,
                     _taskRowCapacity,
-                    backgrounds.GetValueOrDefault(date)));
+                    backgrounds.GetValueOrDefault(date),
+                    holidayNames.GetValueOrDefault(date)));
             }
             await _updateUi(() =>
             {
@@ -177,7 +180,8 @@ public sealed partial class CalendarViewModel : ViewModelBase
                         Days[index].Update(source.Date, source.IsCurrentMonth,
                             source.IncompleteCount, source.CompletedCount,
                             source.AllTasks,
-                            backgrounds.GetValueOrDefault(source.Date));
+                            backgrounds.GetValueOrDefault(source.Date),
+                            holidayNames.GetValueOrDefault(source.Date));
                     }
                 }
                 DisplayMonth = month.DisplayName;
