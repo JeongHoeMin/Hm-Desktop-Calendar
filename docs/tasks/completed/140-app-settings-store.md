@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `refactor/app-settings-store`
 
 ## 목표
@@ -59,5 +59,5 @@
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `20da0e6`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/19
