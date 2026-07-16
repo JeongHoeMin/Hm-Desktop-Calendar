@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/server-deployment`
 
 ## 목표
@@ -78,5 +78,5 @@ Dockerfile, docker-compose와 배포 문서를 제공해 동기화 서버를 재
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `d45c68d`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/27
