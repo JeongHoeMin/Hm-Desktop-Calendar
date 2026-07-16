@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using HmDesktopCalendar.Calendar;
+using HmDesktopCalendar.Services;
 
 namespace HmDesktopCalendar.ViewModels;
 
@@ -55,6 +56,7 @@ public sealed partial class ScheduleOverviewViewModel : ViewModelBase, IDisposab
     private readonly Func<DateTime> _todayProvider;
     private readonly Func<Action, Task> _updateUi;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly IcsExporter _icsExporter;
     private readonly CancellationTokenSource _dispose = new();
     private CancellationTokenSource? _refresh;
     private CancellationTokenSource? _debounce;
@@ -69,12 +71,15 @@ public sealed partial class ScheduleOverviewViewModel : ViewModelBase, IDisposab
     [ObservableProperty] private DateTimeOffset _customEnd;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private string _errorMessage = string.Empty;
+    [ObservableProperty] private string _exportMessage = string.Empty;
+    [ObservableProperty] private bool _isExportError;
     [ObservableProperty] private ObservableCollection<ScheduleOverviewItemViewModel>
         _items = [];
 
     public bool IsCustomRange => RangeIndex == (int)ScheduleOverviewRange.Custom;
     public bool HasItems => Items.Count > 0;
     public bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+    public bool HasExportMessage => !string.IsNullOrEmpty(ExportMessage);
     public bool IsEmpty => !IsLoading && !HasItems && string.IsNullOrEmpty(ErrorMessage);
     public string ResultSummary => $"{Items.Count:N0}개 일정";
 
@@ -86,12 +91,14 @@ public sealed partial class ScheduleOverviewViewModel : ViewModelBase, IDisposab
 
     public ScheduleOverviewViewModel(ICalendarRepository repository,
         Func<DateTime> todayProvider, Func<Action, Task> updateUi,
-        Func<TimeSpan, CancellationToken, Task> delay)
+        Func<TimeSpan, CancellationToken, Task> delay,
+        IcsExporter? icsExporter = null)
     {
         _repository = repository;
         _todayProvider = todayProvider;
         _updateUi = updateUi;
         _delay = delay;
+        _icsExporter = icsExporter ?? new IcsExporter();
         DateTime today = _todayProvider().Date;
         _customStart = new DateTimeOffset(today);
         _customEnd = new DateTimeOffset(today.AddDays(89));
@@ -113,6 +120,36 @@ public sealed partial class ScheduleOverviewViewModel : ViewModelBase, IDisposab
     partial void OnCustomEndChanged(DateTimeOffset value)
     {
         if (IsCustomRange) QueueRefresh();
+    }
+    partial void OnExportMessageChanged(string value) =>
+        OnPropertyChanged(nameof(HasExportMessage));
+
+    public async Task ExportIcsAsync(string path)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        try
+        {
+            IReadOnlyList<CalendarItem> items = await _repository
+                .GetAllItemsAsync(_dispose.Token);
+            await _icsExporter.ExportToFileAsync(items, path, _dispose.Token);
+            await _updateUi(() =>
+            {
+                IsExportError = false;
+                int exportedCount = items.Count(item => !item.IsDeleted);
+                ExportMessage = $"전체 일정 {exportedCount:N0}개를 ICS 파일로 내보냈습니다.";
+            });
+        }
+        catch (OperationCanceledException) when (_dispose.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            await _updateUi(() =>
+            {
+                IsExportError = true;
+                ExportMessage = $"ICS 파일을 저장하지 못했습니다. {exception.Message}";
+            });
+        }
     }
 
     public Task InitializeAsync() => RefreshAsync();

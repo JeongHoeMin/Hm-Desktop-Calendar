@@ -2,8 +2,8 @@
 
 ## 상태
 
-- 상태: 비활성
-- 브랜치: 미정
+- 상태: 완료
+- 브랜치: `feat/ics-export`
 
 ## 목표
 
@@ -41,6 +41,11 @@
   아님). 필터 결과 내보내기가 필요해지면 별도 작업으로 등록한다.
 - 내보내기 실패(파일 쓰기 오류)는 한국어 오류 메시지로 표시하고 부분
   파일을 남기지 않는다.
+- 현재 발생 엔진이 허용하는 일·주·월·연 반복은 모두 RRULE로 직렬화한다. 향후
+  발생 엔진에 RRULE로 표현할 수 없는 규칙이 추가되면 내보내기 시점부터 2년간의
+  발생 항목을 고정 UID 접미사와 함께 개별 VEVENT로 전개한다.
+- `Asia/Seoul`의 KST(+09:00) VTIMEZONE을 파일에 포함해 외부 앱이 TZID를 독립적으로
+  해석할 수 있게 한다.
 
 ## 완료 조건
 
@@ -53,7 +58,18 @@
   변환.
 - 외부 캘린더 앱 가져오기 수동 확인을 PR에 기록한다.
 
+### 실행 결과
+
+- `dotnet build HmDesktopCalendar.csproj -c Release`: 성공(경고 0, 오류 0).
+- `dotnet run --project tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj -c Release`:
+  70개 통과.
+- Outlook 일정 열기에서 생성한 ICS를 열어 제목과 행사 창 생성까지 확인했다. 실제
+  사용자 캘린더에는 저장하지 않았다.
+- 일정 모아보기 창을 920×680에서 직접 확인하고
+  `docs/screenshots/200/200-ics-export.png`에 기록했다. 버튼은 UI Automation 트리에서
+  `ICS 내보내기`로 노출된다.
+
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `457febb` (`feat: add ICS calendar export`)
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/25

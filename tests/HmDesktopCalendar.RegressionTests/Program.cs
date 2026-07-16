@@ -87,6 +87,10 @@ internal static class Program
             ("알림 편집은 프리셋과 시간 없는 일정 기준 시각을 저장한다", ReminderEditorCreatesAnchors),
             ("알림 저장소는 기준 시각과 허용 범위를 검증한다", ReminderRepositoryValidatesRules),
             ("알림 스케줄러는 중복·다시 알림·기간 경계를 처리한다", ReminderSchedulerHandlesLifecycle),
+            ("ICS는 일정과 기간을 표준 VEVENT로 직렬화한다", IcsSerializesEventsAndPeriods),
+            ("ICS는 반복 규칙을 RRULE로 보존한다", IcsPreservesRecurrenceRules),
+            ("ICS는 UTF-8 folding과 원자 저장을 지킨다", IcsFoldsUtf8AndWritesAtomically),
+            ("ICS 내보내기는 화면 필터와 무관한 전체 원본을 사용한다", IcsExportUsesAllSeries),
             ("모아보기는 기간·검색·상태·정렬을 조합한다", ScheduleOverviewCombinesFilters),
             ("모아보기는 연속 저장소 변경을 디바운스한다", ScheduleOverviewDebouncesRepositoryChanges)
         };
@@ -1880,6 +1884,170 @@ internal static class Program
             "로그아웃 뒤 이전 계정의 성공 시각이 남았습니다.");
     }
 
+    private static void IcsSerializesEventsAndPeriods()
+    {
+        var exporter = new IcsExporter();
+        string actual = exporter.Export(
+        [
+            new CalendarItem
+            {
+                Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                Title = "휴가, 여름",
+                Notes = "첫째 날; 둘째 날",
+                StartDate = new DateOnly(2026, 7, 20),
+                EndDate = new DateOnly(2026, 7, 22),
+                IsAllDay = true,
+                UpdatedAt = new DateTimeOffset(2026, 7, 16, 1, 2, 3,
+                    TimeSpan.Zero)
+            },
+            new CalendarItem
+            {
+                Id = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                Title = "회의",
+                StartDate = new DateOnly(2026, 7, 23),
+                EndDate = new DateOnly(2026, 7, 23),
+                StartTime = new TimeOnly(9, 30),
+                EndTime = new TimeOnly(10, 30),
+                UpdatedAt = new DateTimeOffset(2026, 7, 16, 2, 3, 4,
+                    TimeSpan.Zero)
+            }
+        ]);
+        const string expected = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n" +
+            "PRODID:-//HmDesktopCalendar//KO\r\nCALSCALE:GREGORIAN\r\n" +
+            "METHOD:PUBLISH\r\nX-WR-TIMEZONE:Asia/Seoul\r\n" +
+            "BEGIN:VTIMEZONE\r\nTZID:Asia/Seoul\r\nBEGIN:STANDARD\r\n" +
+            "DTSTART:19700101T000000\r\nTZOFFSETFROM:+0900\r\n" +
+            "TZOFFSETTO:+0900\r\nTZNAME:KST\r\nEND:STANDARD\r\n" +
+            "END:VTIMEZONE\r\nBEGIN:VEVENT\r\n" +
+            "UID:11111111111111111111111111111111@hm-desktop-calendar\r\n" +
+            "DTSTAMP:20260716T010203Z\r\nDTSTART;VALUE=DATE:20260720\r\n" +
+            "DTEND;VALUE=DATE:20260723\r\nSUMMARY:휴가\\, 여름\r\n" +
+            "DESCRIPTION:첫째 날\\; 둘째 날\r\nEND:VEVENT\r\n" +
+            "BEGIN:VEVENT\r\n" +
+            "UID:22222222222222222222222222222222@hm-desktop-calendar\r\n" +
+            "DTSTAMP:20260716T020304Z\r\n" +
+            "DTSTART;TZID=Asia/Seoul:20260723T093000\r\n" +
+            "DTEND;TZID=Asia/Seoul:20260723T103000\r\n" +
+            "SUMMARY:회의\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        Assert(actual == expected,
+            "VEVENT 스냅샷 또는 기간 DTEND(exclusive)가 다릅니다.");
+    }
+
+    private static void IcsPreservesRecurrenceRules()
+    {
+        DateOnly start = new(2026, 7, 16);
+        var items = new[]
+        {
+            NewRecurring("매일", RecurrenceFrequency.Daily, 2),
+            NewRecurring("매주", RecurrenceFrequency.Weekly, 3,
+                [DayOfWeek.Monday, DayOfWeek.Friday]),
+            NewRecurring("매월", RecurrenceFrequency.Monthly, 1),
+            NewRecurring("매년", RecurrenceFrequency.Yearly, 1)
+        };
+        string ics = new IcsExporter().Export(items);
+        Assert(ics.Contains("RRULE:FREQ=DAILY;INTERVAL=2;UNTIL=20270831T145959Z\r\n"),
+            "일일 반복 RRULE이 다릅니다.");
+        Assert(ics.Contains("RRULE:FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,FR;" +
+            "UNTIL=20270831T145959Z\r\n"),
+            "주간 반복 RRULE이 요일을 보존하지 못했습니다.");
+        Assert(ics.Contains("RRULE:FREQ=MONTHLY;UNTIL=20270831T145959Z\r\n") &&
+               ics.Contains("RRULE:FREQ=YEARLY;UNTIL=20270831T145959Z\r\n"),
+            "월간 또는 연간 반복 RRULE이 다릅니다.");
+
+        CalendarItem NewRecurring(string title, RecurrenceFrequency frequency,
+            int interval, IReadOnlyList<DayOfWeek>? days = null) => new()
+            {
+                Title = title,
+                StartDate = start,
+                EndDate = start,
+                StartTime = new TimeOnly(9, 0),
+                Recurrence = new RecurrenceRule(frequency, interval, days,
+                    new DateOnly(2027, 8, 31)),
+                UpdatedAt = DateTimeOffset.UnixEpoch
+            };
+    }
+
+    private static void IcsFoldsUtf8AndWritesAtomically() =>
+        WithTempDirectory(directory =>
+        {
+            string title = string.Concat(Enumerable.Repeat("한글,줄;\\", 20));
+            var item = new CalendarItem
+            {
+                Title = title,
+                Notes = "첫 줄\r\n둘째 줄",
+                StartDate = new DateOnly(2026, 7, 16),
+                EndDate = new DateOnly(2026, 7, 16),
+                IsAllDay = true,
+                UpdatedAt = DateTimeOffset.UnixEpoch
+            };
+            var exporter = new IcsExporter();
+            string ics = exporter.Export([item]);
+            string[] physicalLines = ics.Split("\r\n",
+                StringSplitOptions.RemoveEmptyEntries);
+            Assert(physicalLines.All(line => Encoding.UTF8.GetByteCount(line) <= 75),
+                "ICS 물리 줄이 75옥텟을 초과했습니다.");
+            Assert(physicalLines.Any(line => line.StartsWith(' ')),
+                "긴 UTF-8 줄이 folding되지 않았습니다.");
+            Assert(ics.Contains("DESCRIPTION:첫 줄\\n둘째 줄\r\n"),
+                "줄바꿈 텍스트가 이스케이프되지 않았습니다.");
+
+            string path = Path.Combine(directory, "calendar.ics");
+            exporter.ExportToFileAsync([item], path).GetAwaiter().GetResult();
+            Assert(File.ReadAllText(path, Encoding.UTF8) == ics,
+                "원자 저장 파일 내용이 직렬화 결과와 다릅니다.");
+
+            File.WriteAllText(path, "기존 파일", Encoding.UTF8);
+            var invalid = new CalendarItem
+            {
+                Title = "잘못된 일정",
+                StartDate = new DateOnly(2026, 7, 17),
+                EndDate = new DateOnly(2026, 7, 16)
+            };
+            try
+            {
+                exporter.ExportToFileAsync([invalid], path).GetAwaiter().GetResult();
+                throw new InvalidOperationException("잘못된 일정 저장이 성공했습니다.");
+            }
+            catch (ArgumentException)
+            {
+            }
+            Assert(File.ReadAllText(path, Encoding.UTF8) == "기존 파일",
+                "저장 실패가 기존 파일을 손상했습니다.");
+            Assert(Directory.GetFiles(directory, "*.tmp").Length == 0,
+                "저장 실패 뒤 임시 파일이 남았습니다.");
+        });
+
+    private static void IcsExportUsesAllSeries() =>
+        WithTempDirectory(directory =>
+        {
+            var repository = new InMemoryCalendarRepository();
+            repository.UpsertItemAsync(new CalendarItem
+            {
+                Title = "현재 범위 일정",
+                StartDate = new DateOnly(2026, 7, 20),
+                EndDate = new DateOnly(2026, 7, 20)
+            }).GetAwaiter().GetResult();
+            repository.UpsertItemAsync(new CalendarItem
+            {
+                Title = "먼 미래 원본",
+                StartDate = new DateOnly(2030, 1, 1),
+                EndDate = new DateOnly(2030, 1, 1)
+            }).GetAwaiter().GetResult();
+            using var viewModel = new ScheduleOverviewViewModel(repository,
+                () => new DateTime(2026, 7, 16), ImmediateUpdate, Task.Delay);
+            viewModel.SearchText = "현재 범위 일정";
+            string path = Path.Combine(directory, "all-series.ics");
+            viewModel.ExportIcsAsync(path).GetAwaiter().GetResult();
+
+            string ics = File.ReadAllText(path, Encoding.UTF8);
+            Assert(ics.Contains("SUMMARY:현재 범위 일정\r\n") &&
+                   ics.Contains("SUMMARY:먼 미래 원본\r\n"),
+                "화면 필터 또는 조회 기간이 ICS 범위를 줄였습니다.");
+            Assert(viewModel.ExportMessage.Contains("2개") &&
+                   !viewModel.IsExportError,
+                "ICS 내보내기 성공 상태가 잘못되었습니다.");
+        });
+
     private static void ScheduleOverviewCombinesFilters()
     {
         var repository = new InMemoryCalendarRepository();
@@ -2293,6 +2461,11 @@ internal sealed class InMemoryCalendarRepository : ICalendarRepository
     public int UpsertCount { get; private set; }
     public int DeleteCount { get; private set; }
     public int OccurrenceQueryCount { get; private set; }
+
+    public Task<IReadOnlyList<CalendarItem>> GetAllItemsAsync(
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<CalendarItem>>(_items
+            .Where(item => !item.IsDeleted).ToArray());
 
     public Task<IReadOnlyList<CalendarItem>> GetItemsByRangeAsync(DateOnly from,
         DateOnly to, CancellationToken cancellationToken = default) =>
