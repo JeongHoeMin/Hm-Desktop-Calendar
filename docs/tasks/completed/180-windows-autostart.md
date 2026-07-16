@@ -2,8 +2,8 @@
 
 ## 상태
 
-- 상태: 비활성
-- 브랜치: 미정
+- 상태: 완료
+- 브랜치: `feat/windows-autostart`
 
 ## 목표
 
@@ -37,6 +37,8 @@
 - `Microsoft.Win32.Registry`를 직접 사용한다(Windows 전용 앱이므로 허용).
 - `dotnet run` 개발 실행 시에는 dotnet.exe 경로가 등록되는 한계가 있다.
   배포 빌드 기준 기능임을 명시한다.
+- 비-Windows 환경이나 실행 파일 경로·레지스트리 접근이 불가능한 경우 토글을
+  비활성화하고 `AutoStartStatus`의 오류 사유를 표시한다.
 
 ## 완료 조건
 
@@ -50,7 +52,20 @@
   정리).
 - 재로그인 자동 실행 수동 확인.
 
+### 실행 결과
+
+- `dotnet build HmDesktopCalendar.csproj -c Debug`: 성공(경고 0, 오류 0).
+- `dotnet run --project tests/HmDesktopCalendar.RegressionTests/HmDesktopCalendar.RegressionTests.csproj -c Debug`:
+  63개 회귀 테스트 성공.
+- 테스트 전용 Run 값 이름으로 인용된 실행 경로 쓰기·읽기·삭제를 왕복 검증하고
+  `finally`에서 정리했다.
+- Windows UI 자동화로 설정 창 하단의 자동 시작 토글, 설명과 접근성 요소를
+  확인했다.
+- 스크린샷: `docs/screenshots/180/180-windows-autostart.png`.
+- 현재 사용자 세션을 종료해야 하는 재로그인 자동 실행 확인은 수행하지 않았다.
+  실제 배포 실행 파일 기준 수동 확인 항목으로 PR에 기록한다.
+
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `4c9ca3f` (`feat: add Windows autostart setting`)
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/23

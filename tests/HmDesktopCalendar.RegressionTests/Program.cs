@@ -48,6 +48,8 @@ internal static class Program
             ("달력 표시 설정은 즉시 적용되고 다시 로드된다", CalendarDisplaySettingsPersist),
             ("외형 프리셋은 달력 크기 토큰과 불투명도를 계산한다", CalendarAppearanceCalculatesTokens),
             ("외형 설정은 즉시 적용되고 다시 로드된다", CalendarAppearanceSettingsPersist),
+            ("자동 시작 등록은 테스트 레지스트리 값을 왕복한다", AutoStartRegistryRoundTrip),
+            ("자동 시작 오류는 토글을 비활성화하고 사유를 표시한다", AutoStartFailureDisablesToggle),
             ("동기화 실패가 마지막 성공 시각을 보존한다", SynchronizationStatePreservesLastSuccess),
             ("기존 할 일을 v2 문서로 원자적으로 가져온다", LegacyTodosAreImportedAtomically),
             ("가져오기 실패 후 원본으로 복구할 수 있다", FailedImportCanBeRetried),
@@ -935,6 +937,45 @@ internal static class Program
                 "외형 설정을 즉시 적용하거나 다시 로드하지 못했습니다.");
         });
 
+    private static void AutoStartRegistryRoundTrip()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        string valueName = $"HmDesktopCalendar.Tests.{Guid.NewGuid():N}";
+        const string processPath = @"C:\Program Files\Hm Calendar\HmDesktopCalendar.exe";
+        var registrar = new AutoStartRegistrar(valueName, processPath);
+        try
+        {
+            AutoStartStatus enabled = registrar.SetEnabled(true);
+            using Microsoft.Win32.RegistryKey? key =
+                Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    AutoStartRegistrar.RunKeyPath, false);
+            string? stored = key?.GetValue(valueName) as string;
+            Assert(enabled.IsAvailable && enabled.IsEnabled &&
+                   registrar.GetStatus().IsEnabled &&
+                   stored == $"\"{processPath}\"",
+                "자동 시작 Run 값을 인용된 실행 파일 경로로 등록하지 못했습니다.");
+
+            AutoStartStatus disabled = registrar.SetEnabled(false);
+            Assert(disabled.IsAvailable && !disabled.IsEnabled &&
+                   !registrar.GetStatus().IsEnabled,
+                "자동 시작 Run 값을 삭제하지 못했습니다.");
+        }
+        finally { registrar.SetEnabled(false); }
+    }
+
+    private static void AutoStartFailureDisablesToggle()
+    {
+        var viewModel = new SettingsViewModel("1.0.0",
+            new CalendarSettingsStore(Path.Combine(Path.GetTempPath(),
+                $"hm-calendar-{Guid.NewGuid():N}.json")), _ => true,
+            autoStartRegistrar: new UnavailableAutoStartRegistrar());
+
+        Assert(!viewModel.IsAutoStartAvailable &&
+               !viewModel.IsAutoStartEnabled && viewModel.HasAutoStartError &&
+               viewModel.AutoStartError.Contains("테스트 오류"),
+            "자동 시작 접근 실패 상태를 설정 화면에 전달하지 못했습니다.");
+    }
+
     private static void LegacyTextColorIsMigrated() =>
         WithTempDirectory(directory =>
         {
@@ -1676,6 +1717,13 @@ internal static class Program
             _states[key] = state;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class UnavailableAutoStartRegistrar : IAutoStartRegistrar
+    {
+        public AutoStartStatus GetStatus() =>
+            AutoStartStatus.Unavailable("테스트 오류");
+        public AutoStartStatus SetEnabled(bool enabled) => GetStatus();
     }
 
     private static Task ImmediateUpdate(Action update)
