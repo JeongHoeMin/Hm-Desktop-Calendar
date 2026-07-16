@@ -6,6 +6,13 @@ import { hashToken, issueRefreshToken, normalizeEmail } from './token.js'
 
 const credentials = Type.Object({ email: Type.String({ format: 'email', maxLength: 320 }), password: Type.String({ minLength: 8, maxLength: 128 }), deviceName: Type.Optional(Type.String({ maxLength: 100 })) })
 const refreshBody = Type.Object({ refreshToken: Type.String({ minLength: 20 }), deviceName: Type.Optional(Type.String({ maxLength: 100 })) })
+const passwordChangeBody = Type.Object({
+  currentPassword: Type.String({ minLength: 8, maxLength: 128 }),
+  newPassword: Type.String({ minLength: 8, maxLength: 128 })
+})
+const passwordConfirmationBody = Type.Object({
+  password: Type.String({ minLength: 8, maxLength: 128 })
+})
 
 const routes: FastifyPluginAsync = async app => {
   const protectedCredentials = {
@@ -15,6 +22,14 @@ const routes: FastifyPluginAsync = async app => {
       timeWindow: app.config.rateLimitWindowMs
     } }
   }
+  const sensitiveAccountRoute = (body: typeof passwordChangeBody | typeof passwordConfirmationBody) => ({
+    preHandler: [app.authenticate],
+    schema: { body },
+    config: { rateLimit: {
+      max: app.config.authRateLimitMax,
+      timeWindow: app.config.rateLimitWindowMs
+    } }
+  })
   async function createSession(user: { id: string, email: string }, deviceName = '') {
     const refresh = issueRefreshToken(app.config)
     const expires = new Date(Date.now() + app.config.refreshTokenTtlDays * 86400000)
@@ -63,5 +78,51 @@ const routes: FastifyPluginAsync = async app => {
     return { ok: true }
   })
   app.get('/v1/auth/me', { preHandler: [app.authenticate] }, async request => ({ id: request.user.sub, email: request.user.email }))
+
+  app.post('/v1/auth/password', sensitiveAccountRoute(passwordChangeBody), async (request, reply) => {
+    const body = request.body as typeof passwordChangeBody.static
+    const client = await app.db.connect()
+    try {
+      await client.query('BEGIN')
+      const result = await client.query('SELECT password_hash FROM users WHERE id=$1 FOR UPDATE', [request.user.sub])
+      const user = result.rows[0]
+      if (!user || !await argon2.verify(user.password_hash, body.currentPassword)) {
+        await client.query('ROLLBACK')
+        return reply.code(401).send({ message: '현재 비밀번호가 올바르지 않습니다.' })
+      }
+      const passwordHash = await argon2.hash(body.newPassword, { type: argon2.argon2id })
+      await client.query('UPDATE users SET password_hash=$1 WHERE id=$2', [passwordHash, request.user.sub])
+      await client.query('UPDATE refresh_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL', [request.user.sub])
+      await client.query('COMMIT')
+      return { ok: true }
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  })
+
+  app.delete('/v1/auth/me', sensitiveAccountRoute(passwordConfirmationBody), async (request, reply) => {
+    const body = request.body as typeof passwordConfirmationBody.static
+    const client = await app.db.connect()
+    try {
+      await client.query('BEGIN')
+      const result = await client.query('SELECT password_hash FROM users WHERE id=$1 FOR UPDATE', [request.user.sub])
+      const user = result.rows[0]
+      if (!user || !await argon2.verify(user.password_hash, body.password)) {
+        await client.query('ROLLBACK')
+        return reply.code(401).send({ message: '현재 비밀번호가 올바르지 않습니다.' })
+      }
+      await client.query('DELETE FROM users WHERE id=$1', [request.user.sub])
+      await client.query('COMMIT')
+      return reply.code(204).send()
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  })
 }
 export default routes

@@ -22,6 +22,17 @@
 Docker Compose를 이용한 운영 배포, TLS 리버스 프록시, API 스모크 확인, PostgreSQL
 백업·복원 절차는 [`docs/deployment.md`](docs/deployment.md)를 따른다.
 
+## 계정 관리 API
+
+- `POST /v1/auth/password`는 액세스 토큰과 `currentPassword`, `newPassword`를 받아
+  비밀번호를 변경하고 사용자의 모든 갱신 토큰을 폐기한다. 이미 발급된 액세스
+  토큰은 남은 유효 시간 동안 사용할 수 있으므로 성공한 클라이언트는 로컬 세션을
+  지우고 다시 로그인해야 한다.
+- `DELETE /v1/auth/me`는 액세스 토큰과 `password`를 검증한 뒤 사용자와 FK cascade로
+  연결된 모든 서버 데이터를 물리 삭제하고 `204 No Content`를 반환한다.
+- 두 API는 로그인·가입 API와 같은 강화 요청 한도를 사용하며 비밀번호 불일치는
+  `401`과 `{ "message": "현재 비밀번호가 올바르지 않습니다." }`를 반환한다.
+
 ## 서버 보안 설정
 
 - 모든 응답에 `@fastify/helmet`의 기본 보안 헤더를 적용한다.
