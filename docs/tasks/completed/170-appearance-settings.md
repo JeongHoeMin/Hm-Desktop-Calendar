@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/appearance-settings`
 
 ## 목표
@@ -65,5 +65,5 @@
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `c836b6b` (`feat: add calendar appearance settings`)
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/22
