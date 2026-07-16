@@ -64,6 +64,17 @@ describe('server security', () => {
       }
       expect(responses.map(response => response.statusCode)).toEqual([400, 400, 429])
     }
+
+    for (const request of [
+      { method: 'POST' as const, url: '/v1/auth/password' },
+      { method: 'DELETE' as const, url: '/v1/auth/me' }
+    ]) {
+      const responses = []
+      for (let index = 0; index < 3; index++) {
+        responses.push(await app.inject({ ...request, payload: {} }))
+      }
+      expect(responses.map(response => response.statusCode)).toEqual([400, 400, 429])
+    }
   })
 
   it('keeps CORS disabled unless an exact origin is configured', async () => {
