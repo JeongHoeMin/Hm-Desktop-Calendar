@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/account-management-client`
 
 ## 목표
@@ -69,5 +69,5 @@
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `17e1b067a53d9457b4707916bb50dde7c231a735`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/29
