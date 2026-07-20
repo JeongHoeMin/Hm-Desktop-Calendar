@@ -18,4 +18,8 @@ public partial class SettingsWindow : Window
     private void OpenBackupFolder_OnClick(object? sender,
         RoutedEventArgs eventArgs) =>
         ((SettingsViewModel)DataContext!).OpenBackupFolder();
+
+    private void SaveServerUrl_OnClick(object? sender,
+        RoutedEventArgs eventArgs) =>
+        ((SettingsViewModel)DataContext!).SaveServerUrl();
 }

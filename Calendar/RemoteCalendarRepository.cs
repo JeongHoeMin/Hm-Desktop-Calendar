@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using HmDesktopCalendar.Authentication;
+using HmDesktopCalendar.Services;
 
 namespace HmDesktopCalendar.Calendar;
 
@@ -21,22 +22,45 @@ public sealed class RemoteCalendarRepository : IDisposable
     private readonly HttpClient _http;
     private readonly Func<CancellationToken, Task<string?>> _accessTokenProvider;
 
+    public RemoteCalendarRepository(AuthSession session) :
+        this(session, ServerEndpoint.Default)
+    {
+    }
+
     public RemoteCalendarRepository(AuthSession session,
-        string baseUrl = "http://127.0.0.1:3000",
+        ServerEndpoint endpoint, HttpMessageHandler? handler = null)
+        : this(session.GetAccessTokenAsync, endpoint, handler)
+    {
+    }
+
+    public RemoteCalendarRepository(AuthSession session, string baseUrl,
         HttpMessageHandler? handler = null)
-        : this(session.GetAccessTokenAsync, baseUrl, handler)
+        : this(session, ServerEndpoint.FromHttpUrl(baseUrl), handler)
+    {
+    }
+
+    public RemoteCalendarRepository(
+        Func<CancellationToken, Task<string?>> accessTokenProvider) :
+        this(accessTokenProvider, ServerEndpoint.Default)
     {
     }
 
     public RemoteCalendarRepository(
         Func<CancellationToken, Task<string?>> accessTokenProvider,
-        string baseUrl = "http://127.0.0.1:3000",
-        HttpMessageHandler? handler = null)
+        string baseUrl, HttpMessageHandler? handler = null)
+        : this(accessTokenProvider, ServerEndpoint.FromHttpUrl(baseUrl), handler)
+    {
+    }
+
+    public RemoteCalendarRepository(
+        Func<CancellationToken, Task<string?>> accessTokenProvider,
+        ServerEndpoint endpoint, HttpMessageHandler? handler = null)
     {
         ArgumentNullException.ThrowIfNull(accessTokenProvider);
+        ArgumentNullException.ThrowIfNull(endpoint);
         _accessTokenProvider = accessTokenProvider;
         _http = handler is null ? new HttpClient() : new HttpClient(handler);
-        _http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+        _http.BaseAddress = endpoint.HttpBaseUri;
     }
 
     public async Task<CalendarItem> UpsertItemAsync(CalendarItem item,

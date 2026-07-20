@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using HmDesktopCalendar.Services;
 
 namespace HmDesktopCalendar.Authentication;
 
@@ -28,12 +29,23 @@ public sealed class AuthSession : IDisposable, IAccountSession
     public UserInfo? User { get; private set; }
     public bool IsLoggedIn => User is not null;
     public event EventHandler? Changed;
-    public AuthSession(string baseUrl = "http://127.0.0.1:3000") :
-        this(baseUrl, new WindowsCredentialTokenStore()) { }
+    public AuthSession() : this(ServerEndpoint.Default) { }
+
+    public AuthSession(ServerEndpoint endpoint) :
+        this(endpoint, new WindowsCredentialTokenStore()) { }
+
+    public AuthSession(string baseUrl) :
+        this(ServerEndpoint.FromHttpUrl(baseUrl)) { }
 
     public AuthSession(string baseUrl, IRefreshTokenStore tokens)
+        : this(ServerEndpoint.FromHttpUrl(baseUrl), tokens)
     {
-        _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+    }
+
+    public AuthSession(ServerEndpoint endpoint, IRefreshTokenStore tokens)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        _http = new HttpClient { BaseAddress = endpoint.HttpBaseUri };
         _tokens = tokens;
     }
 

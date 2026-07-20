@@ -2,6 +2,7 @@ using System;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using HmDesktopCalendar.Services;
 
 namespace HmDesktopCalendar.Authentication;
 
@@ -16,8 +17,19 @@ public sealed class RealtimeSyncClient : IDisposable, IAsyncDisposable
 
     public event EventHandler? SyncRequested;
 
-    public RealtimeSyncClient(AuthSession session,
-        string url = "ws://127.0.0.1:3000/v1/realtime")
+    public RealtimeSyncClient(AuthSession session) :
+        this(session, ServerEndpoint.Default)
+    {
+    }
+
+    public RealtimeSyncClient(AuthSession session, ServerEndpoint endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        _session = session;
+        _uri = endpoint.RealtimeUri;
+    }
+
+    public RealtimeSyncClient(AuthSession session, string url)
     {
         _session = session;
         _uri = new Uri(url);

@@ -24,6 +24,10 @@ public sealed class SettingsViewModel : ViewModelBase
     private bool _isAutoStartAvailable;
     private string _autoStartError = string.Empty;
     private DateTimeOffset? _lastBackupAt;
+    private readonly string? _environmentServerUrl;
+    private string _serverUrl;
+    private string _serverUrlError = string.Empty;
+    private string _serverUrlStatus = string.Empty;
 
     public SettingsViewModel(string appVersion,
         CalendarSettingsStore settings,
@@ -32,7 +36,8 @@ public sealed class SettingsViewModel : ViewModelBase
         Action<CalendarFontScale, double>? applyAppearance = null,
         IAutoStartRegistrar? autoStartRegistrar = null,
         BackupService? backupService = null,
-        Action<string>? openFolder = null)
+        Action<string>? openFolder = null,
+        ServerEndpoint? serverEndpoint = null)
     {
         AppVersion = appVersion;
         _settings = settings;
@@ -43,6 +48,9 @@ public sealed class SettingsViewModel : ViewModelBase
         _autoStartRegistrar = autoStartRegistrar;
         _backupService = backupService;
         _openFolder = openFolder;
+        _serverUrl = settings.Current.ServerUrl;
+        _environmentServerUrl = serverEndpoint?.IsEnvironmentOverride == true
+            ? serverEndpoint.HttpUrl : null;
         _lastBackupAt = backupService?.GetLastBackupAt();
         ApplyAutoStartStatus(autoStartRegistrar?.GetStatus() ??
             AutoStartStatus.Unavailable("자동 시작 기능을 사용할 수 없습니다."));
@@ -134,12 +142,77 @@ public sealed class SettingsViewModel : ViewModelBase
     public string LastBackupText => _lastBackupAt is { } completed
         ? $"마지막 백업: {completed.ToLocalTime():yyyy-MM-dd HH:mm}"
         : "아직 생성된 백업이 없습니다.";
+    public string ServerUrl
+    {
+        get => _serverUrl;
+        set
+        {
+            if (!SetProperty(ref _serverUrl, value)) return;
+            SetServerUrlError(string.Empty);
+            SetServerUrlStatus(string.Empty);
+            OnPropertyChanged(nameof(CanSaveServerUrl));
+            OnPropertyChanged(nameof(HasServerUrlChangeWarning));
+        }
+    }
+    public string ServerUrlError => _serverUrlError;
+    public bool HasServerUrlError =>
+        !string.IsNullOrWhiteSpace(ServerUrlError);
+    public string ServerUrlStatus => _serverUrlStatus;
+    public bool HasServerUrlStatus =>
+        !string.IsNullOrWhiteSpace(ServerUrlStatus);
+    public bool CanSaveServerUrl => IsServerUrlChanged;
+    public bool IsServerUrlOverridden => _environmentServerUrl is not null;
+    public string ServerUrlOverrideMessage => IsServerUrlOverridden
+        ? $"환경 변수 {ServerEndpoint.EnvironmentVariableName} 값 " +
+          $"({_environmentServerUrl})이 우선 적용 중입니다."
+        : string.Empty;
+    public bool HasServerUrlChangeWarning =>
+        IsLoggedIn && IsServerUrlChanged;
+    public string ServerUrlChangeWarning =>
+        "주소를 저장하면 재시작 후 기존 세션으로 로그인할 수 없을 수 있습니다. " +
+        "새 서버에서 다시 로그인해 주세요.";
 
     public void UpdateSession(bool isLoggedIn)
     {
         if (!SetProperty(ref _isLoggedIn, isLoggedIn, nameof(IsLoggedIn)))
             return;
         OnPropertyChanged(nameof(AuthenticationMenuText));
+        OnPropertyChanged(nameof(HasServerUrlChangeWarning));
+    }
+
+    public bool SaveServerUrl()
+    {
+        if (!ServerEndpoint.TryNormalizeHttpUrl(ServerUrl,
+                out string normalized, out string error))
+        {
+            SetServerUrlStatus(string.Empty);
+            SetServerUrlError(error);
+            return false;
+        }
+
+        try
+        {
+            bool changed = _settings.Current.ServerUrl != normalized;
+            _settings.Save(_settings.Current with { ServerUrl = normalized });
+            if (_serverUrl != normalized)
+            {
+                _serverUrl = normalized;
+                OnPropertyChanged(nameof(ServerUrl));
+            }
+            SetServerUrlError(string.Empty);
+            OnPropertyChanged(nameof(CanSaveServerUrl));
+            OnPropertyChanged(nameof(HasServerUrlChangeWarning));
+            SetServerUrlStatus(changed
+                ? "서버 주소를 저장했습니다. 앱을 재시작하면 적용됩니다."
+                : "서버 주소가 이미 저장되어 있습니다.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SetServerUrlStatus(string.Empty);
+            SetServerUrlError($"설정 저장 실패: {exception.Message}");
+            return false;
+        }
     }
 
     public bool ResetWindowPosition()
@@ -233,5 +306,31 @@ public sealed class SettingsViewModel : ViewModelBase
         HasError = hasError;
         StatusMessage = message;
         OnPropertyChanged(nameof(HasStatus));
+    }
+
+    private bool IsServerUrlChanged
+    {
+        get
+        {
+            if (!ServerEndpoint.TryNormalizeHttpUrl(ServerUrl,
+                    out string normalized, out _))
+                return !string.Equals(ServerUrl.Trim(),
+                    _settings.Current.ServerUrl, StringComparison.Ordinal);
+            return normalized != _settings.Current.ServerUrl;
+        }
+    }
+
+    private void SetServerUrlError(string message)
+    {
+        if (!SetProperty(ref _serverUrlError, message,
+                nameof(ServerUrlError))) return;
+        OnPropertyChanged(nameof(HasServerUrlError));
+    }
+
+    private void SetServerUrlStatus(string message)
+    {
+        if (!SetProperty(ref _serverUrlStatus, message,
+                nameof(ServerUrlStatus))) return;
+        OnPropertyChanged(nameof(HasServerUrlStatus));
     }
 }
