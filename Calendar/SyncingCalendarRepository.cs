@@ -91,6 +91,43 @@ public sealed class SyncingCalendarRepository : ICalendarRepository,
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public async Task DeleteAccountScopeAsync(Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfStopped();
+        string scope = userId.ToString("N");
+        string root = Path.GetFullPath(_accountsDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string target = Path.GetFullPath(Path.Combine(_accountsDirectory, scope));
+        if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("계정 데이터 경로가 올바르지 않습니다.");
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _stop.Token);
+        await _syncGate.WaitAsync(linked.Token);
+        try
+        {
+            await _localGate.WaitAsync(linked.Token);
+            try
+            {
+                if (string.Equals(_scope, scope, StringComparison.Ordinal))
+                {
+                    var anonymous = new LocalCalendarRepository(
+                        Path.Combine(_accountsDirectory, "anonymous"));
+                    LocalCalendarRepository old = _local;
+                    _local = anonymous;
+                    _scope = "anonymous";
+                    old.Dispose();
+                }
+                if (Directory.Exists(target)) Directory.Delete(target, true);
+            }
+            finally { _localGate.Release(); }
+        }
+        finally { _syncGate.Release(); }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public Task<IReadOnlyList<CalendarItem>> GetItemsByRangeAsync(DateOnly from,
         DateOnly to, CancellationToken cancellationToken = default) =>
         WithLocalAsync(local => local.GetItemsByRangeAsync(from, to,

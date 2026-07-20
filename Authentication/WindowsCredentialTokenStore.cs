@@ -3,7 +3,14 @@ using System.Runtime.InteropServices;
 
 namespace HmDesktopCalendar.Authentication;
 
-public sealed class WindowsCredentialTokenStore
+public interface IRefreshTokenStore
+{
+    void Save(string token);
+    string? Load();
+    void Clear();
+}
+
+public sealed class WindowsCredentialTokenStore : IRefreshTokenStore
 {
     private const string Target = "HmDesktopCalendar.RefreshToken";
     public void Save(string token)

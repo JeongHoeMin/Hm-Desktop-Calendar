@@ -44,8 +44,10 @@ public partial class App : Application
     private TrayIcon? _trayIcon;
     private NativeMenuItem? _trayPositionItem;
     private NativeMenuItem? _trayAuthenticationItem;
+    private NativeMenuItem? _trayAccountItem;
     private MainWindow? _mainWindow;
     private LoginWindow? _loginWindow;
+    private AccountWindow? _accountWindow;
     private ReminderWindow? _reminderWindow;
     private ScheduleOverviewWindow? _overviewWindow;
     private SettingsWindow? _settingsWindow;
@@ -217,6 +219,7 @@ public partial class App : Application
             ShowSettings,
             ShowScheduleOverview,
             ShowLogin,
+            ShowAccount,
             () => RunBackground(() => _session.LogoutAsync(_lifetime.Token)),
             BeginPositionEdit, CompletePositionEdit, CancelPositionEdit);
     }
@@ -280,6 +283,29 @@ public partial class App : Application
         _loginWindow.Closed += (_, _) => _loginWindow = null;
         _loginWindow.Show();
         _loginWindow.Activate();
+    }
+
+    private void ShowAccount()
+    {
+        if (!_session.IsLoggedIn) return;
+        if (_accountWindow is not null)
+        {
+            _accountWindow.Activate();
+            return;
+        }
+        var viewModel = new AccountViewModel(_session);
+        _accountWindow = new AccountWindow(viewModel, userId =>
+            _repository.DeleteAccountScopeAsync(userId, _lifetime.Token));
+        _accountWindow.Closed += OnAccountClosed;
+        _accountWindow.Show();
+        _accountWindow.Activate();
+    }
+
+    private void OnAccountClosed(object? sender, EventArgs eventArgs)
+    {
+        if (_accountWindow is not { } window) return;
+        window.Closed -= OnAccountClosed;
+        _accountWindow = null;
     }
 
     private void BeginPositionEdit()
@@ -452,6 +478,10 @@ public partial class App : Application
         {
             _settingsViewModel?.UpdateSession(_session.IsLoggedIn);
             RefreshTrayMenuState();
+            if (!_session.IsLoggedIn &&
+                _accountWindow?.DataContext is AccountViewModel
+                    { SessionEnded: false })
+                _accountWindow.Close();
         });
         if (_initializing) return;
         _calendar?.SetSynchronizationAvailability(_session.IsLoggedIn);
@@ -506,12 +536,18 @@ public partial class App : Application
             else
                 ShowLogin();
         };
+        _trayAccountItem = new NativeMenuItem("계정")
+        {
+            IsVisible = _session.IsLoggedIn
+        };
+        _trayAccountItem.Click += (_, _) => ShowAccount();
         var exit = new NativeMenuItem("종료");
         exit.Click += async (_, _) => await RequestShutdownAsync();
         var menu = new NativeMenu();
         menu.Add(settings);
         menu.Add(overview);
         menu.Add(_trayPositionItem);
+        menu.Add(_trayAccountItem);
         menu.Add(_trayAuthenticationItem);
         menu.Add(new NativeMenuItemSeparator());
         menu.Add(exit);
@@ -531,6 +567,8 @@ public partial class App : Application
             _trayAuthenticationItem.Header =
                 _settingsViewModel?.AuthenticationMenuText ??
                 (_session.IsLoggedIn ? "로그아웃" : "로그인 / 회원가입");
+        if (_trayAccountItem is not null)
+            _trayAccountItem.IsVisible = _session.IsLoggedIn;
         if (_trayPositionItem is not null)
             _trayPositionItem.Header = _positionController?.IsEditing == true
                 ? "위치 및 크기 저장"
@@ -583,6 +621,7 @@ public partial class App : Application
         _overviewWindow?.Close();
         _settingsWindow?.Close();
         _loginWindow?.Close();
+        _accountWindow?.Close();
         _interaction?.Dispose();
         _windowHost?.Dispose();
         _trayIcon?.Dispose();

@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Net;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.Threading;
@@ -8,17 +9,33 @@ using System.Threading.Tasks;
 
 namespace HmDesktopCalendar.Authentication;
 
-public sealed class AuthSession : IDisposable
+public interface IAccountSession
+{
+    UserInfo? User { get; }
+    Task ChangePasswordAsync(string currentPassword, string newPassword,
+        CancellationToken cancellationToken = default);
+    Task DeleteAccountAsync(string password,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class AuthSession : IDisposable, IAccountSession
 {
     private readonly HttpClient _http;
-    private readonly WindowsCredentialTokenStore _tokens = new();
+    private readonly IRefreshTokenStore _tokens;
     private readonly SemaphoreSlim _refreshGate = new(1,1);
     private DateTimeOffset _accessExpiresAt;
     public string? AccessToken { get; private set; }
     public UserInfo? User { get; private set; }
     public bool IsLoggedIn => User is not null;
     public event EventHandler? Changed;
-    public AuthSession(string baseUrl = "http://127.0.0.1:3000") => _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+    public AuthSession(string baseUrl = "http://127.0.0.1:3000") :
+        this(baseUrl, new WindowsCredentialTokenStore()) { }
+
+    public AuthSession(string baseUrl, IRefreshTokenStore tokens)
+    {
+        _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        _tokens = tokens;
+    }
 
     public Task LoginAsync(string email, string password, CancellationToken ct = default) => AuthenticateAsync("v1/auth/login", email, password, ct);
     public Task RegisterAsync(string email, string password, CancellationToken ct = default) => AuthenticateAsync("v1/auth/register", email, password, ct);
@@ -62,6 +79,62 @@ public sealed class AuthSession : IDisposable
         try { if (refresh is not null) await _http.PostAsJsonAsync("v1/auth/logout", new { refreshToken = refresh, deviceName = Environment.MachineName }, ct); } catch { }
         _tokens.Clear(); AccessToken = null; User = null; Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    public async Task ChangePasswordAsync(string currentPassword,
+        string newPassword, CancellationToken cancellationToken = default)
+    {
+        using var request = await CreateAuthenticatedRequestAsync(HttpMethod.Post,
+            "v1/auth/password", new { currentPassword, newPassword },
+            cancellationToken);
+        using HttpResponseMessage response = await _http.SendAsync(request,
+            cancellationToken);
+        await EnsureAccountResponseAsync(response, cancellationToken);
+        ClearLocalSession();
+    }
+
+    public async Task DeleteAccountAsync(string password,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = await CreateAuthenticatedRequestAsync(HttpMethod.Delete,
+            "v1/auth/me", new { password }, cancellationToken);
+        using HttpResponseMessage response = await _http.SendAsync(request,
+            cancellationToken);
+        await EnsureAccountResponseAsync(response, cancellationToken);
+        ClearLocalSession();
+    }
+
+    private async Task<HttpRequestMessage> CreateAuthenticatedRequestAsync(
+        HttpMethod method, string path, object body,
+        CancellationToken cancellationToken)
+    {
+        string token = await GetAccessTokenAsync(cancellationToken) ??
+            throw new AuthApiException(HttpStatusCode.Unauthorized,
+                "로그인이 필요합니다.");
+        var request = new HttpRequestMessage(method, path)
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.Authorization = new("Bearer", token);
+        return request;
+    }
+
+    private static async Task EnsureAccountResponseAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode) return;
+        ApiError? error = await response.Content.ReadFromJsonAsync<ApiError>(
+            cancellationToken: cancellationToken);
+        throw new AuthApiException(response.StatusCode,
+            error?.Message ?? "계정 요청에 실패했습니다.");
+    }
+
+    private void ClearLocalSession()
+    {
+        _tokens.Clear();
+        AccessToken = null;
+        User = null;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
     public void Dispose() { _http.Dispose(); _refreshGate.Dispose(); }
     private static DateTimeOffset ReadExpiry(string token)
     {
@@ -75,3 +148,9 @@ public sealed class AuthSession : IDisposable
     private sealed record ApiError([property: JsonPropertyName("message")] string Message);
 }
 public sealed record UserInfo([property: JsonPropertyName("id")] Guid Id, [property: JsonPropertyName("email")] string Email);
+
+public sealed class AuthApiException(HttpStatusCode statusCode, string message)
+    : InvalidOperationException(message)
+{
+    public HttpStatusCode StatusCode { get; } = statusCode;
+}
