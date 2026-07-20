@@ -27,6 +27,7 @@ public partial class App : Application
     private readonly RealtimeSyncClient _realtime;
     private readonly ReminderScheduler _reminders;
     private readonly CalendarSettingsStore _settings = new();
+    private readonly ServerEndpoint _serverEndpoint;
     private readonly BackupService _backups = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _sessionGate = new(1, 1);
@@ -59,18 +60,16 @@ public partial class App : Application
 
     public App()
     {
-        string serverUrl = Environment.GetEnvironmentVariable(
-            "HM_CALENDAR_SERVER_URL") ?? "http://127.0.0.1:3000";
-        _session = new AuthSession(serverUrl);
+        AppSettings appSettings = _settings.LoadSettings();
+        _serverEndpoint = ServerEndpoint.FromSettings(appSettings);
+        _session = new AuthSession(_serverEndpoint);
         var local = new LocalCalendarRepository();
         _repository = new SyncingCalendarRepository(local,
-            new RemoteCalendarRepository(_session, serverUrl), _session);
+            new RemoteCalendarRepository(_session, _serverEndpoint), _session);
         _reminders = new ReminderScheduler(_repository,
             new JsonReminderDeviceStateStore(), new SystemReminderClock(),
             () => _session.User?.Id.ToString("N") ?? "anonymous");
-        string realtimeUrl = serverUrl.Replace("http://", "ws://")
-            .Replace("https://", "wss://").TrimEnd('/') + "/v1/realtime";
-        _realtime = new RealtimeSyncClient(_session, realtimeUrl);
+        _realtime = new RealtimeSyncClient(_session, _serverEndpoint);
     }
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -96,7 +95,8 @@ public partial class App : Application
                 typeof(App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0",
                 _settings, ApplyDefaultWindowBounds, _session.IsLoggedIn,
                 ApplyCalendarDisplayOptions, ApplyCalendarAppearance,
-                new AutoStartRegistrar(), _backups, OpenFolder);
+                new AutoStartRegistrar(), _backups, OpenFolder,
+                _serverEndpoint);
             var interactionNative = new Win32WindowNativeApi();
             _interaction = new DesktopInteractionCoordinator(
                 new GlobalPointerMonitor(interactionNative),

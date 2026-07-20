@@ -43,6 +43,9 @@ internal static class Program
             ("앱 설정은 기존 창 위치 JSON을 호환한다", AppSettingsLoadLegacyBounds),
             ("앱 설정은 원자 저장과 변경 알림을 제공한다", AppSettingsRoundTripAndNotify),
             ("손상된 앱 설정은 기본값으로 복구한다", AppSettingsFallbackFromCorruption),
+            ("서버 주소는 환경 변수와 설정 우선순위를 지킨다", ServerEndpointHonorsPriority),
+            ("서버 주소는 HTTP 형식과 실시간 URL을 검증한다", ServerEndpointValidatesAndDerivesRealtime),
+            ("설정 화면은 서버 주소를 검증하고 저장한다", SettingsServerUrlValidatesAndPersists),
             ("설정 화면은 창 위치를 즉시 초기화하고 저장한다", SettingsResetWindowBounds),
             ("설정 메뉴는 세션 상태에 맞는 문구를 표시한다", SettingsMenuTracksSession),
             ("계정 화면은 비밀번호와 삭제 확인 입력을 검증한다", AccountInputsAreValidated),
@@ -795,7 +798,8 @@ internal static class Program
                 WeekStart = CalendarWeekStart.Monday,
                 ColorWeekends = false,
                 FontScale = CalendarFontScale.Large,
-                BackgroundOpacity = 0.65
+                BackgroundOpacity = 0.65,
+                ServerUrl = "https://sync.example.test/base"
             };
             int changeCount = 0;
             AppSettings? notified = null;
@@ -837,6 +841,82 @@ internal static class Program
             Assert(bounds == new Avalonia.PixelRect(100, 100, 980, 680) &&
                    store.Current == new AppSettings(),
                 "손상된 설정 파일에서 기본값으로 복구하지 못했습니다.");
+        });
+
+    private static void ServerEndpointHonorsPriority()
+    {
+        ServerEndpoint environment = ServerEndpoint.Resolve(
+            "https://settings.example.test", "https://env.example.test:8443");
+        ServerEndpoint settings = ServerEndpoint.Resolve(
+            "https://settings.example.test/base/", null);
+        ServerEndpoint fallback = ServerEndpoint.Resolve(null, null);
+        bool invalidEnvironmentRejected = false;
+        try
+        {
+            ServerEndpoint.Resolve(ServerEndpoint.DefaultHttpUrl,
+                "ftp://invalid.example.test");
+        }
+        catch (InvalidOperationException)
+        {
+            invalidEnvironmentRejected = true;
+        }
+
+        Assert(environment.IsEnvironmentOverride &&
+               environment.HttpUrl == "https://env.example.test:8443" &&
+               !settings.IsEnvironmentOverride &&
+               settings.HttpUrl == "https://settings.example.test/base" &&
+               fallback.HttpUrl == ServerEndpoint.DefaultHttpUrl &&
+               invalidEnvironmentRejected,
+            "환경 변수, settings.json, 기본 주소 우선순위가 올바르지 않습니다.");
+    }
+
+    private static void ServerEndpointValidatesAndDerivesRealtime()
+    {
+        bool valid = ServerEndpoint.TryNormalizeHttpUrl(
+            " https://sync.example.test:9443/api/ ", out string normalized,
+            out _);
+        ServerEndpoint endpoint = ServerEndpoint.FromHttpUrl(normalized);
+        bool invalidScheme = ServerEndpoint.TryNormalizeHttpUrl(
+            "ftp://sync.example.test", out _, out _);
+        bool invalidQuery = ServerEndpoint.TryNormalizeHttpUrl(
+            "https://sync.example.test?token=secret", out _, out _);
+
+        Assert(valid && normalized == "https://sync.example.test:9443/api" &&
+               endpoint.RealtimeUri.AbsoluteUri ==
+               "wss://sync.example.test:9443/api/v1/realtime" &&
+               !invalidScheme && !invalidQuery,
+            "서버 주소 검증 또는 WebSocket URL 파생이 올바르지 않습니다.");
+    }
+
+    private static void SettingsServerUrlValidatesAndPersists() =>
+        WithTempDirectory(directory =>
+        {
+            string path = Path.Combine(directory, "settings.json");
+            var store = new CalendarSettingsStore(path);
+            store.LoadSettings();
+            ServerEndpoint environment = ServerEndpoint.Resolve(
+                ServerEndpoint.DefaultHttpUrl, "https://env.example.test");
+            var viewModel = new SettingsViewModel("1.0.0", store, _ => true,
+                isLoggedIn: true, serverEndpoint: environment)
+            {
+                ServerUrl = "not-a-url"
+            };
+
+            Assert(!viewModel.SaveServerUrl() && viewModel.HasServerUrlError &&
+                   store.Current.ServerUrl == ServerEndpoint.DefaultHttpUrl,
+                "잘못된 서버 주소 저장을 거부하지 못했습니다.");
+            viewModel.ServerUrl = "https://sync.example.test/base/";
+            Assert(viewModel.HasServerUrlChangeWarning &&
+                   viewModel.IsServerUrlOverridden &&
+                   viewModel.ServerUrlOverrideMessage.Contains(
+                       ServerEndpoint.EnvironmentVariableName),
+                "세션 또는 환경 변수 우선 적용 안내를 표시하지 못했습니다.");
+            Assert(viewModel.SaveServerUrl() && !viewModel.HasServerUrlError &&
+                   viewModel.HasServerUrlStatus &&
+                   !viewModel.CanSaveServerUrl &&
+                   new CalendarSettingsStore(path).LoadSettings().ServerUrl ==
+                   "https://sync.example.test/base",
+                "검증된 서버 주소를 정규화해 저장하지 못했습니다.");
         });
 
     private static void SettingsResetWindowBounds() =>

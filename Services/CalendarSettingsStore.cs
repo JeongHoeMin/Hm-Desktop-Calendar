@@ -20,7 +20,7 @@ public enum CalendarFontScale
 
 public sealed record AppSettings
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public int X { get; init; } = 100;
     public int Y { get; init; } = 100;
@@ -32,6 +32,7 @@ public sealed record AppSettings
     public CalendarFontScale FontScale { get; init; } =
         CalendarFontScale.Medium;
     public double BackgroundOpacity { get; init; } = 0.9;
+    public string ServerUrl { get; init; } = ServerEndpoint.DefaultHttpUrl;
 }
 
 public sealed class AppSettingsChangedEventArgs(AppSettings settings) : EventArgs
@@ -173,7 +174,8 @@ public sealed class CalendarSettingsStore
             SchemaVersion = AppSettings.CurrentSchemaVersion,
             WeekStart = weekStart,
             FontScale = fontScale,
-            BackgroundOpacity = opacity
+            BackgroundOpacity = opacity,
+            ServerUrl = ServerEndpoint.NormalizeOrDefault(settings.ServerUrl)
         };
     }
 }

@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using HmDesktopCalendar.Authentication;
+using HmDesktopCalendar.Services;
 
 namespace HmDesktopCalendar.Todos;
 
@@ -15,7 +16,16 @@ public sealed class RemoteTodoRepository : IDisposable
 {
     private readonly HttpClient _http;
     private readonly AuthSession _session;
-    public RemoteTodoRepository(AuthSession session, string baseUrl = "http://127.0.0.1:3000") { _session = session; _http = new HttpClient { BaseAddress = new Uri(baseUrl) }; }
+    public RemoteTodoRepository(AuthSession session) :
+        this(session, ServerEndpoint.Default) { }
+    public RemoteTodoRepository(AuthSession session, string baseUrl) :
+        this(session, ServerEndpoint.FromHttpUrl(baseUrl)) { }
+    public RemoteTodoRepository(AuthSession session, ServerEndpoint endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        _session = session;
+        _http = new HttpClient { BaseAddress = endpoint.HttpBaseUri };
+    }
     private async Task AuthorizeAsync(CancellationToken ct) => _http.DefaultRequestHeaders.Authorization =
         new AuthenticationHeaderValue("Bearer", await _session.GetAccessTokenAsync(ct) ?? throw new InvalidOperationException("로그인이 필요합니다."));
     public async Task<TodoItem> UpsertAsync(TodoItem item, CancellationToken ct = default)
