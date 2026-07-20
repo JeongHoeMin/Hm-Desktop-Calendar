@@ -2,7 +2,7 @@
 
 ## 상태
 
-- 상태: 활성
+- 상태: 완료
 - 브랜치: `feat/server-url-setting`
 
 ## 목표
@@ -63,5 +63,5 @@
 
 ## 작업 결과
 
-- 커밋: 미정
-- PR: 미정
+- 커밋: `8e5995f9635d930850b4b7eb157a440e96982f1b`
+- PR: https://github.com/JeongHoeMin/Hm-Desktop-Calendar/pull/30
